@@ -87,6 +87,7 @@ export class Panel {
 		this.#agent.addEventListener('dispose', this.#onAgentDispose)
 
 		this.#setupEventListeners()
+		this.#setupCopyButtonDelegation()
 		this.#startHeaderUpdateLoop()
 
 		this.#showInputArea()
@@ -670,7 +671,16 @@ export class Panel {
 			const input = action.input as { text?: string }
 			const text = input.text || action.output || ''
 			if (text) {
-				cards.push(createCard({ icon: '🤖', content: text, meta, type: 'output' }))
+				cards.push(
+					createCard({
+						icon: '🤖',
+						content: text,
+						meta,
+						type: 'output',
+						copyable: true,
+						copyText: text,
+					})
+				)
 			}
 		} else if (action.name === 'ask_user') {
 			const input = action.input as { question?: string }
@@ -693,5 +703,47 @@ export class Panel {
 		}
 
 		return cards
+	}
+
+	/**
+	 * Delegated click handler for copy buttons inside the history list.
+	 * One listener for all copy buttons — cards are HTML strings and re-render
+	 * freely, so per-button binding would leak. We resolve the actual button via
+	 * Element.closest('[data-copy-button]') and read `data-copy-text` directly.
+	 */
+	#handleCopyButtonClick = (event: MouseEvent): void => {
+		const target = event.target as HTMLElement | null
+		const button = target?.closest('[data-copy-button]') as HTMLButtonElement | null
+		if (!button) return
+
+		const text = button.dataset.copyText ?? ''
+		if (!text) return
+
+		event.preventDefault()
+		event.stopPropagation()
+
+		const flash = (state: 'done' | 'error') => {
+			button.dataset.state = state
+			setTimeout(() => {
+				// Only revert if the same button is still mounted. A re-render would
+				// create a new node, leaving this timer harmless.
+				if (button.isConnected) {
+					button.dataset.state = 'idle'
+				}
+			}, 1500)
+		}
+
+		void navigator.clipboard
+			.writeText(text)
+			.then(() => flash('done'))
+			.catch((err: unknown) => {
+				console.warn('[panel] copy failed:', err)
+				flash('error')
+			})
+	}
+
+	/** Attach the copy-button delegated listener. Called once from the constructor. */
+	#setupCopyButtonDelegation(): void {
+		this.#historySection.addEventListener('click', this.#handleCopyButtonClick)
 	}
 }
