@@ -20,6 +20,12 @@ export default defineBackground(() => {
 	// message proxy
 
 	chrome.runtime.onMessage.addListener((message, sender, sendResponse): true | undefined => {
+		if (message.type === 'OPEN_HUB') {
+			openOrFocusHubTab(message.wsPort).catch((err) =>
+				console.error('[background]: openOrFocusHubTab failed', err)
+			)
+			return
+		}
 		if (message.type === 'TAB_CONTROL') {
 			return handleTabControlMessage(message, sender, sendResponse)
 		} else if (message.type === 'PAGE_CONTROL') {

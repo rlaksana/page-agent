@@ -177,16 +177,20 @@ export function ConfigPanel({ config, onSave, onClose }: ConfigPanelProps) {
 				</div>
 			</div>
 
-			{/* Hub link */}
-			<a
-				href="/hub.html"
-				target="_blank"
-				rel="noopener noreferrer"
+			{/* Hub link — opens hub.html with the current MCP ws port so the WebSocket actually connects. */}
+			<button
+				type="button"
+				onClick={() => {
+					const wsPort = Number(import.meta.env.VITE_MCP_WS_PORT) || 38401
+					chrome.runtime
+						.sendMessage({ type: 'OPEN_HUB', wsPort })
+						.catch((err) => console.error('[ConfigPanel]: open hub failed', err))
+				}}
 				className="flex items-center justify-between p-3 rounded-md border bg-muted/50 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-foreground/20 transition-colors"
 			>
 				Manage Page Agent Hub
 				<ExternalLink className="size-3" />
-			</a>
+			</button>
 
 			<div className="flex flex-col gap-1.5">
 				<label htmlFor="base-url" className="text-xs text-muted-foreground">

@@ -426,9 +426,20 @@ export class PageAgentCore extends EventTarget {
 					console.log(reflectionText)
 				}
 
-				// Find the corresponding tool
+				// Find the corresponding tool. If the LLM hallucinated a tool name,
+				// surface it as a failed step result so the agent can self-correct on
+				// the next iteration instead of crashing the whole task.
 				const tool = tools.get(toolName)
-				assert(tool, `Tool ${toolName} not found`)
+				if (!tool) {
+					const available = Array.from(tools.keys()).join(', ')
+					const message = `Unknown tool "${toolName}". Available tools: ${available}. You must call one of the available tools.`
+					console.warn(chalk.yellow(message))
+					this.#emitActivity({ type: 'error', message })
+					return {
+						input,
+						output: message,
+					}
+				}
 
 				console.log(chalk.blue.bold(`Executing tool: ${toolName}`), toolInput)
 
@@ -478,10 +489,19 @@ export class PageAgentCore extends EventTarget {
 		}
 
 		const targetLanguage = this.config.language === 'zh-CN' ? '中文' : 'English'
+
+		// Build a concise, formatted list of available tools for the model.
+		// This grounds the model on the exact tool names and their purpose, which
+		// dramatically reduces hallucinated tool calls (e.g. `code_interpreter`,
+		// `function_call`, or made-up names) that would otherwise fail the step.
+		const toolList = Array.from(this.tools.entries())
+			.map(([name, tool]) => `- \`${name}\`: ${tool.description.split('\n')[0]}`)
+			.join('\n')
+
 		const systemPrompt = SYSTEM_PROMPT.replace(
 			/Default working language: \*\*.*?\*\*/,
 			`Default working language: **${targetLanguage}**`
-		)
+		).replace('{available_tools}', toolList)
 
 		return systemPrompt
 	}

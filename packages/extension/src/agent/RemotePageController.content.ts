@@ -13,7 +13,12 @@ export function initPageController() {
 			return (response as { tabId: number | null }).tabId
 		})
 		.catch((error) => {
-			console.error('[RemotePageController.ContentScript]: Failed to get my tab id', error)
+			// Silently swallow context invalidation: the polling loop will
+			// tear itself down on the next tick. Anything else surfaces.
+			const msg = error instanceof Error ? error.message : String(error)
+			if (!msg.includes('Extension context invalidated')) {
+				console.error('[RemotePageController.ContentScript]: Failed to get my tab id', error)
+			}
 			return null
 		})
 
@@ -28,8 +33,7 @@ export function initPageController() {
 	}
 
 	intervalID = window.setInterval(() => {
-		// Bail out if extension context is gone (reload/update/disable). Without
-		// this, every callback after invalidation logs an unhandled rejection.
+		// Synchronous guard: bail out if the extension context is already gone.
 		if (!chrome.runtime?.id) {
 			if (intervalID !== null) clearInterval(intervalID)
 			intervalID = null
@@ -38,16 +42,25 @@ export function initPageController() {
 			return
 		}
 		void (async () => {
+			// Re-check inside the async IIFE: a reload can land between the sync
+			// guard above and the first await below. chrome.* APIs throw
+			// "Extension context invalidated" without lastError when this happens.
+			if (!chrome.runtime?.id) return
 			try {
 				const agentHeartbeat = (await chrome.storage.local.get('agentHeartbeat')).agentHeartbeat
+				// Re-check after every await — invalidation can happen mid-flight.
+				if (!chrome.runtime?.id) return
 				const now = Date.now()
 				const agentInTouch = typeof agentHeartbeat === 'number' && now - agentHeartbeat < 2_000
 
 				const isAgentRunning = (await chrome.storage.local.get('isAgentRunning')).isAgentRunning
+				if (!chrome.runtime?.id) return
 				const currentTabId = (await chrome.storage.local.get('currentTabId')).currentTabId
+				if (!chrome.runtime?.id) return
 
 				const shouldShowMask =
 					isAgentRunning && agentInTouch && currentTabId === (await myTabIdPromise)
+				if (!chrome.runtime?.id) return
 
 				if (shouldShowMask) {
 					const pc = getPC()
@@ -68,7 +81,12 @@ export function initPageController() {
 					}
 				}
 			} catch (err) {
-				console.error('[RemotePageController.ContentScript]: poll iteration failed', err)
+				// Swallow context-invalidation specifically — that's the loop's
+				// intended exit signal, not a real error. Anything else surfaces.
+				const msg = err instanceof Error ? err.message : String(err)
+				if (!msg.includes('Extension context invalidated')) {
+					console.error('[RemotePageController.ContentScript]: poll iteration failed', err)
+				}
 			}
 		})()
 	}, 500)
