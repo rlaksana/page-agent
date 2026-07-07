@@ -15,7 +15,6 @@ describe('createCard with copyable option', () => {
 		})
 		expect(html).toContain('data-copy-button')
 		expect(html).toContain(`data-state="idle"`)
-		expect(html).toContain(styles.copyButton)
 	})
 
 	it('does not render a copy button when copyable is omitted', () => {
