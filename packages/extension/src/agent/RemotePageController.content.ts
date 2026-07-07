@@ -27,34 +27,50 @@ export function initPageController() {
 		return pageController
 	}
 
-	intervalID = window.setInterval(async () => {
-		const agentHeartbeat = (await chrome.storage.local.get('agentHeartbeat')).agentHeartbeat
-		const now = Date.now()
-		const agentInTouch = typeof agentHeartbeat === 'number' && now - agentHeartbeat < 2_000
-
-		const isAgentRunning = (await chrome.storage.local.get('isAgentRunning')).isAgentRunning
-		const currentTabId = (await chrome.storage.local.get('currentTabId')).currentTabId
-
-		const shouldShowMask = isAgentRunning && agentInTouch && currentTabId === (await myTabIdPromise)
-
-		if (shouldShowMask) {
-			const pc = getPC()
-			pc.initMask()
-			await pc.showMask()
-		} else {
-			// await getPC().hideMask()
-			if (pageController) {
-				pageController.hideMask()
-				pageController.cleanUpHighlights()
-			}
+	intervalID = window.setInterval(() => {
+		// Bail out if extension context is gone (reload/update/disable). Without
+		// this, every callback after invalidation logs an unhandled rejection.
+		if (!chrome.runtime?.id) {
+			if (intervalID !== null) clearInterval(intervalID)
+			intervalID = null
+			pageController?.dispose()
+			pageController = null
+			return
 		}
+		void (async () => {
+			try {
+				const agentHeartbeat = (await chrome.storage.local.get('agentHeartbeat')).agentHeartbeat
+				const now = Date.now()
+				const agentInTouch = typeof agentHeartbeat === 'number' && now - agentHeartbeat < 2_000
 
-		if (!isAgentRunning && agentInTouch) {
-			if (pageController) {
-				pageController.dispose()
-				pageController = null
+				const isAgentRunning = (await chrome.storage.local.get('isAgentRunning')).isAgentRunning
+				const currentTabId = (await chrome.storage.local.get('currentTabId')).currentTabId
+
+				const shouldShowMask =
+					isAgentRunning && agentInTouch && currentTabId === (await myTabIdPromise)
+
+				if (shouldShowMask) {
+					const pc = getPC()
+					pc.initMask()
+					await pc.showMask()
+				} else {
+					// await getPC().hideMask()
+					if (pageController) {
+						pageController.hideMask()
+						pageController.cleanUpHighlights()
+					}
+				}
+
+				if (!isAgentRunning && agentInTouch) {
+					if (pageController) {
+						pageController.dispose()
+						pageController = null
+					}
+				}
+			} catch (err) {
+				console.error('[RemotePageController.ContentScript]: poll iteration failed', err)
 			}
-		}
+		})()
 	}, 500)
 
 	chrome.runtime.onMessage.addListener((message, sender, sendResponse): true | undefined => {
