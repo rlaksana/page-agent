@@ -27,6 +27,23 @@ npm run test                   # Run unit tests across all workspaces
 npm run lint                   # ESLint
 ```
 
+## Build Prerequisites
+
+After a fresh clone — or any `git clean -fdx` that removes `node_modules` — workspace symlinks under `node_modules/@page-agent/` must be recreated before `wxt build` (extension) will resolve cross-package imports. Run:
+
+```bash
+npm install  # recreates workspaces under node_modules/@page-agent/
+```
+
+**Symptom if skipped:** `wxt build` fails with `Rolldown failed to resolve import "@page-agent/core"`. Root cause: WXT/Rolldown cannot resolve TS source files through empty workspace dirs; symlinks must point to `packages/*/` directories.
+
+**Known pre-existing tooling blocker:** `npm run build:libs` fails on the `@page-agent/page-agent` package due to an `api-extractor` crash (`ExportAnalyzer._fetchSpecifierAstModule`). This blocks publishing `page-agent` itself but does NOT block extension builds — the extension depends only on `core`, `llms`, `ui`, and `page-controller`, all of which build successfully.
+
+## Extension Build Output
+
+- `packages/extension/.output/chrome-mv3/` — Load Unpacked from `chrome://extensions` (developer mode).
+- `packages/extension/.output/page-agent-ext-<version>-<browser>.zip` — packed extension (Load Packed or distribute).
+
 ## Architecture
 
 ### Monorepo Structure
@@ -130,7 +147,7 @@ const pageInfo = await this.pageController.getPageInfo()
 
 - **Framework**: Vitest (unit tests only for now; future E2E goes to `packages/e2e/` with Playwright)
 - **Location**: co-located, `src/foo.test.ts` next to `src/foo.ts`
-- **Coverage today**: `packages/llms` only — other packages will follow incrementally
+- **Coverage**: `packages/llms` (full suite) and `packages/extension` (`vitest.config.ts` scaffold + `constants.test.ts` for the `migrateMaxRetries` helper). Other packages will follow incrementally.
 - **Adding tests to a new package**: create `vitest.config.ts` in the package and add a `"test": "vitest run"` script. Root `npm test` and `node scripts/ci.js` pick it up through npm workspaces.
 - **Template**: See @page-agent/llms
 
@@ -139,6 +156,17 @@ npm test                            # all packages with a test script
 npm test -w @page-agent/llms        # single package
 cd packages/llms && npx vitest      # watch mode in one package
 ```
+
+### Extension (`packages/extension/`)
+
+| File                          | Description                                                             |
+| ----------------------------- | ----------------------------------------------------------------------- |
+| `src/agent/useAgent.ts`       | React hook wiring `MultiPageAgent` with persisted config                |
+| `src/agent/constants.ts`      | Stored-config migrations (`migrateLegacyEndpoint`, `migrateMaxRetries`) |
+| `src/agent/MultiPageAgent.ts` | Long-lived page-agent wrapper with message-passing IPC                  |
+| `src/components/cards.tsx`    | Step / result / retry card renderers                                    |
+
+**Stored-config migration pattern.** When library defaults bump (e.g. `maxRetries` 2 → 10 in commit `85b0087`) and the extension persists `LLMConfig` to `chrome.storage.local`, the stored config keeps the old value (the parse fallback only fires when the field is `undefined`). Fix: add a pure `migrate*` helper in `constants.ts` that returns the same reference when no migration is needed and a new object without the stale field otherwise; call it from `useAgent.ts` storage load and rewrite storage when the reference changes. Reference-identity (`!==`) is the contract that drives the rewrite.
 
 ## Code Standards
 
