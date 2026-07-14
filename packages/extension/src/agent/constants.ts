@@ -28,3 +28,23 @@ export function migrateLegacyEndpoint(config: LLMConfig): LLMConfig {
 	}
 	return config
 }
+
+// Matches library default in packages/llms/src/index.ts:104.
+// Bump in lockstep with the library default and extend this helper if the
+// library default changes again.
+const MAX_RETRIES_TARGET = 10
+
+/**
+ * Strip a stale `maxRetries` value (< MAX_RETRIES_TARGET) stored on the
+ * LLMConfig so the value falls back to the library default. Pure function:
+ * returns the same object reference when no migration is needed, a new
+ * object without the field otherwise.
+ */
+export function migrateMaxRetries(config: LLMConfig): LLMConfig {
+	if (config.maxRetries === undefined || config.maxRetries >= MAX_RETRIES_TARGET) {
+		return config
+	}
+	const { maxRetries: _drop, ...rest } = config
+	void _drop
+	return rest as LLMConfig
+}
