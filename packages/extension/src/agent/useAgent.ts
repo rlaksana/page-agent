@@ -12,7 +12,7 @@ import type { LLMConfig } from '@page-agent/llms'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { MultiPageAgent } from './MultiPageAgent'
-import { DEMO_CONFIG, migrateLegacyEndpoint } from './constants'
+import { DEMO_CONFIG, migrateLegacyEndpoint, migrateMaxRetries } from './constants'
 
 /** Language preference: undefined means follow system */
 export type LanguagePreference = SupportedLanguage | undefined
@@ -99,11 +99,21 @@ export function useAgent(): UseAgentResult {
 			const advancedConfig = (result.advancedConfig as AdvancedConfig) ?? {}
 
 			// Auto-migrate legacy testing endpoints
-			const migrated = migrateLegacyEndpoint(llmConfig)
-			if (migrated !== llmConfig) {
-				llmConfig = migrated
-				chrome.storage.local.set({ llmConfig: migrated })
-			} else if (!result.llmConfig) {
+			const legacyMigrated = migrateLegacyEndpoint(llmConfig)
+			if (legacyMigrated !== llmConfig) {
+				llmConfig = legacyMigrated
+			}
+
+			// Auto-migrate stale maxRetries (library default bumped from 2 → 10)
+			const retriesMigrated = migrateMaxRetries(llmConfig)
+			if (retriesMigrated !== llmConfig) {
+				llmConfig = retriesMigrated
+			}
+
+			if (llmConfig !== result.llmConfig) {
+				chrome.storage.local.set({ llmConfig })
+			}
+			if (!result.llmConfig) {
 				chrome.storage.local.set({ llmConfig: DEMO_CONFIG })
 			}
 
