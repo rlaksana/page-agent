@@ -7,7 +7,9 @@ import type {
 	RetryEvent,
 } from '@page-agent/core'
 import {
+	Check,
 	CheckCircle,
+	Copy,
 	Eye,
 	Globe,
 	Keyboard,
@@ -19,8 +21,87 @@ import {
 	Zap,
 } from 'lucide-react'
 import { Fragment, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 import { cn } from '@/lib/utils'
+
+// Markdown renderer component with styled elements
+function MarkdownContent({ content }: { content: string }) {
+	return (
+		<ReactMarkdown
+			remarkPlugins={[remarkGfm]}
+			components={{
+				p: ({ children }) => <p className="mb-1.5 last:mb-0 leading-relaxed">{children}</p>,
+				ol: ({ children }) => (
+					<ol className="list-decimal list-outside pl-4 space-y-1 my-1.5">{children}</ol>
+				),
+				ul: ({ children }) => (
+					<ul className="list-disc list-outside pl-4 space-y-1 my-1.5">{children}</ul>
+				),
+				li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+				h1: ({ children }) => <h1 className="text-sm font-bold mt-2 mb-1">{children}</h1>,
+				h2: ({ children }) => <h2 className="text-xs font-bold mt-2 mb-1">{children}</h2>,
+				h3: ({ children }) => <h3 className="text-xs font-semibold mt-1.5 mb-0.5">{children}</h3>,
+				h4: ({ children }) => <h4 className="text-xs font-semibold mt-1 mb-0.5">{children}</h4>,
+				blockquote: ({ children }) => (
+					<blockquote className="border-l-2 border-primary/40 pl-2.5 my-1.5 italic text-muted-foreground">
+						{children}
+					</blockquote>
+				),
+				code: ({ className, children, ...props }) => {
+					const isInline = !className && typeof children === 'string' && !children.includes('\n')
+					if (isInline) {
+						return (
+							<code
+								className="bg-muted/80 text-foreground px-1 py-0.5 rounded text-xs font-mono border border-border/40"
+								{...props}
+							>
+								{children}
+							</code>
+						)
+					}
+					return (
+						<code className={cn('text-xs font-mono', className)} {...props}>
+							{children}
+						</code>
+					)
+				},
+				pre: ({ children }) => (
+					<pre className="bg-muted p-2 rounded-md overflow-x-auto my-1.5 border border-border/40 text-xs">
+						{children}
+					</pre>
+				),
+				a: ({ href, children }) => (
+					<a
+						href={href}
+						target="_blank"
+						rel="noopener noreferrer"
+						className="text-primary underline underline-offset-2 hover:text-primary/80 break-all"
+					>
+						{children}
+					</a>
+				),
+				table: ({ children }) => (
+					<div className="overflow-x-auto my-2">
+						<table className="w-full border-collapse border border-border text-xs">
+							{children}
+						</table>
+					</div>
+				),
+				th: ({ children }) => (
+					<th className="border border-border bg-muted/60 px-2 py-1 font-semibold text-left">
+						{children}
+					</th>
+				),
+				td: ({ children }) => <td className="border border-border px-2 py-1">{children}</td>,
+				hr: () => <hr className="my-2 border-border/40" />,
+			}}
+		>
+			{content}
+		</ReactMarkdown>
+	)
+}
 
 // Result card for done action
 function ResultCard({
@@ -32,6 +113,14 @@ function ResultCard({
 	text: string
 	children?: React.ReactNode
 }) {
+	const [copied, setCopied] = useState(false)
+
+	const handleCopy = () => {
+		navigator.clipboard.writeText(text)
+		setCopied(true)
+		setTimeout(() => setCopied(false), 1500)
+	}
+
 	return (
 		<div
 			className={cn(
@@ -54,7 +143,31 @@ function ResultCard({
 					Result: {success ? 'Success' : 'Failed'}
 				</span>
 			</div>
-			<p className="text-[12px] text-foreground pl-5 whitespace-pre-wrap">{text}</p>
+			<div className="text-sm text-foreground pl-5 break-words">
+				<MarkdownContent content={text} />
+			</div>
+			{text && (
+				<div className="mt-3 pt-2 pl-5 border-t border-border/30 flex items-center justify-end">
+					<button
+						type="button"
+						onClick={handleCopy}
+						className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/80 border border-border/50 rounded-md transition-colors cursor-pointer bg-background/60"
+						aria-label="Copy result"
+					>
+						{copied ? (
+							<>
+								<Check className="size-3 text-green-500" />
+								<span className="text-green-600 dark:text-green-400">Copied!</span>
+							</>
+						) : (
+							<>
+								<Copy className="size-3" />
+								<span>Copy</span>
+							</>
+						)}
+					</button>
+				</div>
+			)}
 			{children}
 		</div>
 	)
@@ -69,7 +182,7 @@ function ReflectionItem({ icon, value }: { icon: string; value: string }) {
 			<span className="text-xs flex justify-center">{icon}</span>
 			<span
 				className={cn(
-					'text-[11px] text-muted-foreground cursor-pointer hover:text-muted-foreground/70',
+					'text-xs text-muted-foreground cursor-pointer hover:text-muted-foreground/70',
 					!expanded && 'line-clamp-1'
 				)}
 				onClick={() => setExpanded(!expanded)}
@@ -100,7 +213,7 @@ function ReflectionSection({
 
 	return (
 		<div className="mb-2">
-			{/* <div className="text-[11px] font-semibold text-foreground uppercase tracking-wide mb-2">
+			{/* <div className="text-xs font-semibold text-foreground uppercase tracking-wide mb-2">
 				Reflection
 			</div> */}
 			<div className="grid grid-cols-[14px_1fr] gap-x-2 gap-y-2">
@@ -135,7 +248,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
 				setCopied(true)
 				setTimeout(() => setCopied(false), 1500)
 			}}
-			className="text-[9px] text-muted-foreground hover:text-foreground transition-colors border px-1 rounded shrink-0 cursor-pointer backdrop-blur-xs"
+			className="text-xs text-muted-foreground hover:text-foreground transition-colors border px-1 rounded shrink-0 cursor-pointer backdrop-blur-xs"
 		>
 			{copied ? 'Copied!' : label}
 		</button>
@@ -179,7 +292,7 @@ function RawSection({ rawRequest, rawResponse }: { rawRequest?: unknown; rawResp
 						type="button"
 						onClick={() => handleTabClick('request')}
 						className={cn(
-							'text-[10px] mt-0.5 transition-colors border-b cursor-pointer',
+							'text-xs mt-0.5 transition-colors border-b cursor-pointer',
 							activeTab === 'request'
 								? 'text-foreground border-foreground'
 								: 'text-muted-foreground border-transparent hover:text-foreground'
@@ -193,7 +306,7 @@ function RawSection({ rawRequest, rawResponse }: { rawRequest?: unknown; rawResp
 						type="button"
 						onClick={() => handleTabClick('response')}
 						className={cn(
-							'text-[10px] mt-0.5 transition-colors border-b cursor-pointer',
+							'text-xs mt-0.5 transition-colors border-b cursor-pointer',
 							activeTab === 'response'
 								? 'text-foreground border-foreground'
 								: 'text-muted-foreground border-transparent hover:text-foreground'
@@ -210,7 +323,7 @@ function RawSection({ rawRequest, rawResponse }: { rawRequest?: unknown; rawResp
 						{userPrompt && <CopyButton text={userPrompt} label="Copy User" />}
 						<CopyButton text={JSON.stringify(content, null, 4)} label="Copy" />
 					</div>
-					<pre className="p-2 pt-5 text-[10px] text-foreground/70 bg-muted rounded overflow-x-auto max-h-60 overflow-y-auto">
+					<pre className="p-2 pt-5 text-xs text-foreground/70 bg-muted rounded overflow-x-auto max-h-60 overflow-y-auto">
 						{JSON.stringify(content, null, 4)}
 					</pre>
 				</div>
@@ -222,7 +335,7 @@ function RawSection({ rawRequest, rawResponse }: { rawRequest?: unknown; rawResp
 function StepCard({ event }: { event: AgentStepEvent }) {
 	return (
 		<div className="rounded-lg border-l-2 border-l-blue-500/50 border bg-muted/40 p-2.5">
-			<div className="text-[11px] font-semibold text-foreground tracking-wide mb-2">
+			<div className="text-xs font-semibold text-foreground tracking-wide mb-2">
 				Step #{event.stepIndex! + 1}
 			</div>
 
@@ -232,9 +345,7 @@ function StepCard({ event }: { event: AgentStepEvent }) {
 			{/* Action */}
 			{event.action && (
 				<div>
-					<div className="text-[11px] font-semibold text-foreground tracking-wide mb-1">
-						Actions
-					</div>
+					<div className="text-xs font-semibold text-foreground tracking-wide mb-1">Actions</div>
 					<div className="flex items-start gap-2">
 						<ActionIcon
 							name={event.action.name}
@@ -249,7 +360,7 @@ function StepCard({ event }: { event: AgentStepEvent }) {
 									</span>
 								)}
 							</p>
-							<p className="text-[11px] text-muted-foreground/70 grid grid-cols-[auto_1fr] gap-1.5">
+							<p className="text-xs text-muted-foreground/70 grid grid-cols-[auto_1fr] gap-1.5">
 								<span className="">└</span>
 								<span className="wrap-anywhere break-all line-clamp-1 hover:line-clamp-3">
 									{event.action.output}
@@ -269,12 +380,12 @@ function StepCard({ event }: { event: AgentStepEvent }) {
 function ObservationCard({ event }: { event: ObservationEvent }) {
 	return (
 		<div className="rounded-lg border-l-2 border-l-green-500/50 border bg-muted/40 p-2.5">
-			{/* <div className="text-[11px] font-semibold text-foreground uppercase tracking-wide mb-2">
+			{/* <div className="text-xs font-semibold text-foreground uppercase tracking-wide mb-2">
 				Observation
 			</div> */}
 			<div className="flex items-start gap-2">
 				<Eye className="size-3.5 text-green-500 shrink-0 mt-0.5" />
-				<span className="text-[11px] text-muted-foreground">{event.content}</span>
+				<span className="text-xs text-muted-foreground">{event.content}</span>
 			</div>
 		</div>
 	)
