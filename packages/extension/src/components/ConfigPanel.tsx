@@ -134,7 +134,7 @@ export function ConfigPanel({ config, onSave, onClose }: ConfigPanelProps) {
 				<label htmlFor="user-auth-token" className="text-xs font-medium text-muted-foreground">
 					User Auth Token
 				</label>
-				<p className="text-[10px] text-muted-foreground mb-1">
+				<p className="text-xs text-muted-foreground mb-1">
 					Give a website the ability to call this extension.
 				</p>
 				<div className="flex gap-2 items-center">
@@ -207,7 +207,7 @@ export function ConfigPanel({ config, onSave, onClose }: ConfigPanelProps) {
 
 			{/* Testing API notice */}
 			{isTestingEndpoint(baseURL) && (
-				<div className="p-2.5 rounded-md border border-amber-500/30 bg-amber-500/5 text-[11px] text-muted-foreground leading-relaxed">
+				<div className="p-2.5 rounded-md border border-amber-500/30 bg-amber-500/5 text-xs text-muted-foreground leading-relaxed">
 					<Scale className="size-3 inline-block mr-1 -mt-0.5 text-amber-600" />
 					You are using our testing API. By using this you agree to the{' '}
 					<a
@@ -345,7 +345,7 @@ export function ConfigPanel({ config, onSave, onClose }: ConfigPanelProps) {
 			</div>
 
 			{/* Footer */}
-			<div className="mt-4 mb-4 pt-4 border-t border-border/50 flex gap-2 justify-between text-[10px] text-muted-foreground">
+			<div className="mt-4 mb-4 pt-4 border-t border-border/50 flex gap-2 justify-between text-xs text-muted-foreground">
 				<div className="flex flex-col justify-between">
 					<span>
 						Version <span className="font-mono">v{__VERSION__}</span>
@@ -388,7 +388,7 @@ export function ConfigPanel({ config, onSave, onClose }: ConfigPanelProps) {
 			</div>
 
 			{/* attribute */}
-			<div className="text-[10px] text-muted-foreground bg-background fixed bottom-0 w-full flex justify-around">
+			<div className="text-xs text-muted-foreground bg-background fixed bottom-0 w-full flex justify-around">
 				<span className="leading-loose">
 					Built with ♥️ by{' '}
 					<a

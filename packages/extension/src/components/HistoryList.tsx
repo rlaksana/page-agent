@@ -89,7 +89,7 @@ export function HistoryList({
 							await clearSessions()
 							setSessions([])
 						}}
-						className="text-[10px] text-muted-foreground hover:text-destructive cursor-pointer h-6 px-2"
+						className="text-xs text-muted-foreground hover:text-destructive cursor-pointer h-6 px-2"
 					>
 						<Trash2 className="size-3 mr-1" />
 						Clear All
@@ -139,7 +139,7 @@ export function HistoryList({
 						<div className="flex-1 min-w-0">
 							<p className="text-xs font-medium truncate">{session.task}</p>
 							<div className="flex items-center mt-0.5">
-								<p className="text-[10px] text-muted-foreground">
+								<p className="text-xs text-muted-foreground">
 									{timeAgo(session.createdAt)} · {session.history.length} steps
 								</p>
 								<div className="flex items-center gap-0.5 ml-auto opacity-0 group-hover:opacity-100 transition-opacity">

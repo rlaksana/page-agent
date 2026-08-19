@@ -41,7 +41,7 @@ export function HistoryDetail({
 
 			{/* Task */}
 			<div className="border-b px-3 py-2 bg-muted/30">
-				<div className="text-[10px] text-muted-foreground uppercase tracking-wide">Task</div>
+				<div className="text-xs text-muted-foreground uppercase tracking-wide">Task</div>
 				<div className="text-xs font-medium" title={session.task}>
 					{session.task}
 				</div>
@@ -49,7 +49,7 @@ export function HistoryDetail({
 					<button
 						type="button"
 						onClick={() => onRerun(session.task)}
-						className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+						className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
 					>
 						<RotateCcw className="size-3" />
 						Run again
@@ -60,7 +60,7 @@ export function HistoryDetail({
 							await deleteSession(sessionId)
 							onBack()
 						}}
-						className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-destructive transition-colors cursor-pointer"
+						className="flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive transition-colors cursor-pointer"
 					>
 						<Trash2 className="size-3" />
 						Delete

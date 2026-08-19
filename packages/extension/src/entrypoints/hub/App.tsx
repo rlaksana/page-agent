@@ -41,7 +41,7 @@ export default function App() {
 				>
 					<Logo className="size-5" />
 					<span className="text-sm font-semibold tracking-tight">Page Agent Hub</span>
-					<span className="text-[9px] font-medium uppercase tracking-wider text-amber-600 bg-amber-500/10 border border-amber-500/30 rounded px-1.5 py-0.5">
+					<span className="text-xs font-medium uppercase tracking-wider text-amber-600 bg-amber-500/10 border border-amber-500/30 rounded px-1.5 py-0.5">
 						Beta
 					</span>
 				</a>
@@ -71,7 +71,7 @@ export default function App() {
 					<ProtocolDocsCollapsible />
 				</div>
 
-				<div className="border-t px-5 py-3 text-[10px] text-muted-foreground/60 flex items-center justify-between">
+				<div className="border-t px-5 py-3 text-xs text-muted-foreground/60 flex items-center justify-between">
 					<span className="font-mono">v{__VERSION__}</span>
 					<span>
 						Built with ♥️ by{' '}
@@ -110,7 +110,7 @@ export default function App() {
 				{/* Task banner */}
 				{currentTask && (
 					<div className="border-b px-5 py-2 bg-muted/30">
-						<div className="text-[10px] text-muted-foreground uppercase tracking-wide">
+						<div className="text-xs text-muted-foreground uppercase tracking-wide">
 							Current Task
 						</div>
 						<div className="text-sm font-medium truncate" title={currentTask}>
@@ -159,7 +159,7 @@ function HubConfig() {
 
 	return (
 		<div>
-			<h3 className="text-[11px] font-semibold text-foreground/80 uppercase tracking-wider mb-2">
+			<h3 className="text-xs font-semibold text-foreground/80 uppercase tracking-wider mb-2">
 				Config
 			</h3>
 			<div className="group/hub relative">
@@ -197,7 +197,7 @@ function ProtocolDocsCollapsible() {
 			<button
 				type="button"
 				onClick={() => setOpen(!open)}
-				className="flex items-center gap-1 text-[11px] font-semibold text-foreground/80 uppercase tracking-wider cursor-pointer"
+				className="flex items-center gap-1 text-xs font-semibold text-foreground/80 uppercase tracking-wider cursor-pointer"
 			>
 				Docs
 				{open ? <FoldVertical className="size-3" /> : <UnfoldVertical className="size-3" />}
@@ -205,39 +205,39 @@ function ProtocolDocsCollapsible() {
 
 			{open && (
 				<div className="mt-3 space-y-4 text-xs text-muted-foreground">
-					<p className="text-[10px]">
-						Connect via <code className="text-[10px]">hub.html?ws=PORT</code>
+					<p className="text-xs">
+						Connect via <code className="text-xs">hub.html?ws=PORT</code>
 					</p>
 
 					<section>
-						<h4 className="text-[11px] font-medium text-foreground/60 mb-1.5">Flow</h4>
-						<ol className="list-decimal list-inside space-y-1 text-[11px] leading-relaxed">
+						<h4 className="text-xs font-medium text-foreground/60 mb-1.5">Flow</h4>
+						<ol className="list-decimal list-inside space-y-1 text-xs leading-relaxed">
 							<li>Hub opens WS to caller's server</li>
 							<li>
-								Sends <code className="text-[10px]">ready</code>
+								Sends <code className="text-xs">ready</code>
 							</li>
 							<li>
-								Caller sends <code className="text-[10px]">execute</code> with task
+								Caller sends <code className="text-xs">execute</code> with task
 							</li>
 							<li>Hub runs agent, streams events</li>
 							<li>
-								Hub sends <code className="text-[10px]">result</code> or{' '}
-								<code className="text-[10px]">error</code>
+								Hub sends <code className="text-xs">result</code> or{' '}
+								<code className="text-xs">error</code>
 							</li>
 						</ol>
 					</section>
 
 					<section>
-						<h4 className="text-[11px] font-medium text-foreground/60 mb-1.5">Caller → Hub</h4>
-						<pre className="bg-muted/50 rounded-md p-3 font-mono text-[10px] leading-relaxed whitespace-pre-wrap">
+						<h4 className="text-xs font-medium text-foreground/60 mb-1.5">Caller → Hub</h4>
+						<pre className="bg-muted/50 rounded-md p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap">
 							{`{ type: "execute", task: string, config?: object }
 { type: "stop" }`}
 						</pre>
 					</section>
 
 					<section>
-						<h4 className="text-[11px] font-medium text-foreground/60 mb-1.5">Hub → Caller</h4>
-						<pre className="bg-muted/50 rounded-md p-3 font-mono text-[10px] leading-relaxed whitespace-pre-wrap">
+						<h4 className="text-xs font-medium text-foreground/60 mb-1.5">Hub → Caller</h4>
+						<pre className="bg-muted/50 rounded-md p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap">
 							{`{ type: "ready" }
 { type: "result", success: boolean, data: string }
 { type: "error", message: string }`}
