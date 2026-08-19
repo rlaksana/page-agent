@@ -130,6 +130,38 @@ export function handleTabControlMessage(
 			return true // async response
 		}
 
+		case 'ungroup_tab_group': {
+			debug('ungroup_tab_group', payload)
+			// Look up all tabs in the group, then ungroup them. The empty group is
+			// auto-removed by Chrome once its last tab leaves.
+			// Failures here (e.g. group already gone) are non-fatal — the agent treats
+			// them as "already cleaned up" and proceeds.
+			chrome.tabs
+				.query({ groupId: payload.groupId })
+				.then((tabs) => {
+					const tabIds = tabs.map((t) => t.id).filter((id): id is number => id != null)
+					if (tabIds.length === 0) {
+						// Group exists but is empty (or already gone) — nothing to ungroup.
+						sendResponse({ success: true, alreadyEmpty: true })
+						return
+					}
+					return chrome.tabs.ungroup(tabIds as [number, ...number[]])
+				})
+				.then(() => {
+					if (chrome.runtime.lastError) {
+						// ungroup() can reject with "No tab is in the group" when the
+						// group was emptied between query and ungroup — treat as success.
+						console.warn(PREFIX, 'ungroup race:', chrome.runtime.lastError.message)
+					}
+					sendResponse({ success: true })
+				})
+				.catch((error: unknown) => {
+					console.warn(PREFIX, 'Failed to remove tab group (already gone?)', error)
+					sendResponse({ success: true, alreadyGone: true })
+				})
+			return true // async response
+		}
+
 		case 'close_tab': {
 			debug('close_tab', payload)
 			chrome.tabs

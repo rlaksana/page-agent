@@ -68,6 +68,12 @@ export class TabsController {
 		this.experimentalIncludeAllTabs = experimentalIncludeAllTabs
 		this.task = task
 
+		// Orphan recovery: if a previous session's tab group is still in storage,
+		// the sidepanel was closed before `dispose()` could clean up. Remove it now
+		// so this session starts from a clean slate. The same cleanup is also run
+		// on App mount (see sidepanel/App.tsx) so it fires even before this init().
+		await TabsController.cleanupStaleTabGroup()
+
 		const activeTabResult = await sendMessage({
 			type: 'TAB_CONTROL',
 			action: 'get_active_tab',
@@ -229,6 +235,7 @@ export class TabsController {
 		}
 
 		this.tabGroupId = result.groupId as number
+		await chrome.storage.local.set({ [TAB_GROUP_STORAGE_KEY]: this.tabGroupId })
 
 		await sendMessage({
 			type: 'TAB_CONTROL',
@@ -242,6 +249,33 @@ export class TabsController {
 				},
 			},
 		})
+	}
+
+	/**
+	 * Remove any tab group recorded in storage from a previous session.
+	 * Best-effort: tolerates a group that's already gone (e.g. user ungrouped manually).
+	 *
+	 * Exposed as a static so the sidepanel can run it on mount, BEFORE the user
+	 * starts a new task. The dispose()-time cleanup is unreliable in MV3 sidepanel
+	 * because the JS context may die before `chrome.runtime.sendMessage` lands.
+	 * Running it on next open (when the context is fresh) is the reliable path.
+	 */
+	static async cleanupStaleTabGroup(): Promise<void> {
+		try {
+			const stored = await chrome.storage.local.get(TAB_GROUP_STORAGE_KEY)
+			const staleId = stored?.[TAB_GROUP_STORAGE_KEY]
+			if (typeof staleId !== 'number') return
+
+			await sendMessage({
+				type: 'TAB_CONTROL',
+				action: 'ungroup_tab_group',
+				payload: { groupId: staleId },
+			})
+		} catch (e) {
+			console.warn(PREFIX, 'stale tab group cleanup failed:', e)
+		} finally {
+			await chrome.storage.local.remove(TAB_GROUP_STORAGE_KEY)
+		}
 	}
 
 	private addTab(meta: TabMeta) {
@@ -373,6 +407,20 @@ export class TabsController {
 		this.disposed = true
 		this.port?.disconnect()
 		this.port = undefined
+
+		// Best-effort cleanup of the tab group we created for this session.
+		// The sidepanel's JS context is going away, so we don't await —
+		// `init()` will run orphan recovery on the next open if this doesn't land.
+		if (this.tabGroupId != null) {
+			const groupId = this.tabGroupId
+			this.tabGroupId = null
+			sendMessage({
+				type: 'TAB_CONTROL',
+				action: 'ungroup_tab_group',
+				payload: { groupId },
+			}).catch((e) => console.warn(PREFIX, 'dispose ungroup failed:', e))
+			chrome.storage.local.remove(TAB_GROUP_STORAGE_KEY).catch(console.error)
+		}
 	}
 }
 
@@ -388,6 +436,7 @@ export type TabAction =
 	| 'create_tab_group'
 	| 'update_tab_group'
 	| 'add_tab_to_group'
+	| 'ungroup_tab_group'
 	| 'close_tab'
 	| 'get_tab_title'
 	| 'get_window_tabs'
@@ -399,6 +448,10 @@ interface TabMeta {
 	title?: string
 	status?: 'loading' | 'unloaded' | 'complete'
 }
+
+/** Storage key for the currently-managed tab group, so we can recover after
+ *  a sidepanel close (where `dispose()` may not finish its async cleanup). */
+const TAB_GROUP_STORAGE_KEY = 'pageAgentTabGroupId'
 
 const TAB_GROUP_COLORS = ['blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan'] as const
 
