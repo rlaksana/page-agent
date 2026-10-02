@@ -1,30 +1,56 @@
 import {
+	ArrowLeft,
+	ChevronDown,
 	Copy,
-	CornerUpLeft,
 	ExternalLink,
 	Eye,
 	EyeOff,
-	FoldVertical,
-	HatGlasses,
-	Home,
+	Layers,
 	Loader2,
-	Scale,
-	UnfoldVertical,
+	TriangleAlert,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { siGithub } from 'simple-icons'
 
 import { DEMO_BASE_URL, DEMO_MODEL, isTestingEndpoint } from '@/agent/constants'
 import type { ExtConfig, LanguagePreference } from '@/agent/useAgent'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Switch } from '@/components/ui/switch'
+import { cn } from '@/lib/utils'
 
 interface ConfigPanelProps {
 	config: ExtConfig | null
 	onSave: (config: ExtConfig) => Promise<void>
 	onClose: () => void
 }
+
+/** Design-system switch (`.sw` pill with sliding knob). */
+function Switch({
+	checked,
+	onChange,
+	label,
+}: {
+	checked: boolean
+	onChange: (checked: boolean) => void
+	label: string
+}) {
+	return (
+		<button
+			type="button"
+			role="switch"
+			aria-checked={checked}
+			aria-label={label}
+			className={cn('sw', checked && 'on')}
+			onClick={() => onChange(!checked)}
+		>
+			<i />
+		</button>
+	)
+}
+
+const LANGUAGES: { value: LanguagePreference; label: string }[] = [
+	{ value: undefined, label: 'System' },
+	{ value: 'en-US', label: 'English' },
+	{ value: 'zh-CN', label: '中文' },
+]
 
 export function ConfigPanel({ config, onSave, onClose }: ConfigPanelProps) {
 	const [baseURL, setBaseURL] = useState(config?.baseURL || DEMO_BASE_URL)
@@ -114,293 +140,295 @@ export function ConfigPanel({ config, onSave, onClose }: ConfigPanelProps) {
 		}
 	}
 
+	const maskedToken = userAuthToken
+		? showToken
+			? userAuthToken
+			: `${userAuthToken.slice(0, 4)}${'•'.repeat(Math.max(0, userAuthToken.length - 8))}${userAuthToken.slice(-4)}`
+		: 'Loading...'
+
 	return (
-		<div className="flex flex-col gap-4 p-4 relative">
-			<div className="flex items-center justify-between">
-				<h2 className="text-base font-semibold">Settings</h2>
-				<Button
-					variant="ghost"
-					size="icon-sm"
-					onClick={onClose}
-					className="absolute top-2 right-3 cursor-pointer"
-					aria-label="Back"
-				>
-					<CornerUpLeft className="size-3.5" />
-				</Button>
+		<>
+			<div className="sub">
+				<button type="button" className="ib" onClick={onClose} aria-label="Back" title="Back">
+					<ArrowLeft className="size-4" />
+				</button>
+				<span className="ttl">Settings</span>
+				<span className="sp" />
 			</div>
 
-			{/* User Auth Token Section */}
-			<div className="flex flex-col gap-1.5 p-3 bg-muted/50 rounded-md border">
-				<label htmlFor="user-auth-token" className="text-xs font-medium text-muted-foreground">
-					User Auth Token
-				</label>
-				<p className="text-xs text-muted-foreground mb-1">
-					Give a website the ability to call this extension.
-				</p>
-				<div className="flex gap-2 items-center">
-					<Input
-						id="user-auth-token"
-						readOnly
-						value={
-							userAuthToken
-								? showToken
-									? userAuthToken
-									: `${userAuthToken.slice(0, 4)}${'•'.repeat(userAuthToken.length - 8)}${userAuthToken.slice(-4)}`
-								: 'Loading...'
-						}
-						className="text-xs h-8 font-mono bg-background"
-					/>
-					<Button
-						variant="outline"
-						size="icon"
-						className="h-8 w-8 shrink-0 cursor-pointer"
-						onClick={() => setShowToken(!showToken)}
-						disabled={!userAuthToken}
-						aria-label={showToken ? 'Hide token' : 'Show token'}
-						aria-pressed={showToken}
-					>
-						{showToken ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
-					</Button>
-					<Button
-						variant="outline"
-						size="icon"
-						className="h-8 w-8 shrink-0 cursor-pointer"
-						onClick={handleCopyToken}
-						disabled={!userAuthToken}
-						aria-label="Copy token"
-					>
-						{copied ? <span className="">✓</span> : <Copy className="size-3" />}
-					</Button>
-					<span role="status" aria-live="polite" aria-atomic="true" className="sr-only">
-						{copied ? 'Token copied' : ''}
-					</span>
-				</div>
-			</div>
-
-			{/* Hub link — opens hub.html with the current MCP ws port so the WebSocket actually connects. */}
-			<button
-				type="button"
-				onClick={() => {
-					const wsPort = Number(import.meta.env.VITE_MCP_WS_PORT) || 38401
-					chrome.runtime
-						.sendMessage({ type: 'OPEN_HUB', wsPort })
-						.catch((err) => console.error('[ConfigPanel]: open hub failed', err))
-				}}
-				className="flex items-center justify-between p-3 rounded-md border bg-muted/50 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-foreground/20 transition-colors"
-			>
-				Manage Page Agent Hub
-				<ExternalLink className="size-3" />
-			</button>
-
-			<div className="flex flex-col gap-1.5">
-				<label htmlFor="base-url" className="text-xs text-muted-foreground">
-					Base URL
-				</label>
-				<Input
-					id="base-url"
-					placeholder="https://api.openai.com/v1"
-					value={baseURL}
-					onChange={(e) => setBaseURL(e.target.value)}
-					className="text-xs h-8"
-				/>
-			</div>
-
-			{/* Testing API notice */}
-			{isTestingEndpoint(baseURL) && (
-				<div className="p-2.5 rounded-md border border-amber-500/30 bg-amber-500/5 text-xs text-muted-foreground leading-relaxed">
-					<Scale className="size-3 inline-block mr-1 -mt-0.5 text-amber-600" />
-					You are using our testing API. By using this you agree to the{' '}
-					<a
-						href="https://github.com/alibaba/page-agent/blob/main/docs/terms-and-privacy.md"
-						target="_blank"
-						rel="noopener noreferrer"
-						className="underline hover:text-foreground"
-					>
-						Terms of Use & Privacy Policy
-					</a>
-				</div>
-			)}
-
-			<div className="flex flex-col gap-1.5">
-				<label htmlFor="model" className="text-xs text-muted-foreground">
-					Model
-				</label>
-				<Input
-					id="model"
-					placeholder="gpt-5.1"
-					value={model}
-					onChange={(e) => setModel(e.target.value)}
-					className="text-xs h-8"
-				/>
-			</div>
-
-			<div className="flex flex-col gap-1.5">
-				<label htmlFor="api-key" className="text-xs text-muted-foreground">
-					API Key
-				</label>
-				<div className="flex gap-2 items-center">
-					<Input
-						id="api-key"
-						type={showApiKey ? 'text' : 'password'}
-						// placeholder="sk-..."
-						value={apiKey}
-						onChange={(e) => setApiKey(e.target.value)}
-						className="text-xs h-8"
-					/>
-					<Button
-						variant="outline"
-						size="icon"
-						className="h-8 w-8 shrink-0 cursor-pointer"
-						onClick={() => setShowApiKey(!showApiKey)}
-						aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
-					>
-						{showApiKey ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
-					</Button>
-				</div>
-			</div>
-
-			<div className="flex flex-col gap-1.5">
-				<label className="text-xs text-muted-foreground">Response Language</label>
-				<select
-					value={language ?? ''}
-					onChange={(e) => setLanguage((e.target.value || undefined) as LanguagePreference)}
-					className="h-8 text-xs rounded-md border border-input bg-background px-2 cursor-pointer"
-				>
-					<option value="">System</option>
-					<option value="en-US">English</option>
-					<option value="zh-CN">中文</option>
-				</select>
-			</div>
-
-			{/* Advanced Config */}
-			<button
-				type="button"
-				onClick={() => setAdvancedOpen(!advancedOpen)}
-				className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer mt-1 font-bold"
-			>
-				Advanced
-				{advancedOpen ? <FoldVertical className="size-3" /> : <UnfoldVertical className="size-3" />}
-			</button>
-
-			{advancedOpen && (
-				<>
-					<div className="flex flex-col gap-1.5">
-						<label htmlFor="max-steps" className="text-xs text-muted-foreground">
-							Max Steps
-						</label>
-						<Input
-							id="max-steps"
-							type="number"
-							placeholder="40"
-							min={1}
-							max={200}
-							value={maxSteps ?? ''}
-							onChange={(e) => setMaxSteps(e.target.value ? Number(e.target.value) : undefined)}
-							className="text-xs h-8 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
-						/>
+			<div className="set">
+				{/* Model provider */}
+				<div className="sec">
+					<span className="lab">Model provider</span>
+					{isTestingEndpoint(baseURL) && (
+						<div className="note nw">
+							<TriangleAlert className="size-4" />
+							<div>
+								You are using our testing API. By continuing you agree to the{' '}
+								<a
+									href="https://github.com/alibaba/page-agent/blob/main/docs/terms-and-privacy.md"
+									target="_blank"
+									rel="noopener noreferrer"
+								>
+									Terms of Use
+								</a>{' '}
+								and{' '}
+								<a
+									href="https://github.com/alibaba/page-agent/blob/main/docs/terms-and-privacy.md"
+									target="_blank"
+									rel="noopener noreferrer"
+								>
+									Privacy Policy
+								</a>
+								.
+							</div>
+						</div>
+					)}
+					<div className="grp">
+						<div className="fld">
+							<label className="lb" htmlFor="base-url">
+								Base URL
+							</label>
+							<input
+								id="base-url"
+								className="in m"
+								placeholder="https://api.openai.com/v1"
+								value={baseURL}
+								onChange={(e) => setBaseURL(e.target.value)}
+							/>
+						</div>
+						<div className="fld">
+							<label className="lb" htmlFor="model">
+								Model
+							</label>
+							<input
+								id="model"
+								className="in m"
+								placeholder="gpt-5.1"
+								value={model}
+								onChange={(e) => setModel(e.target.value)}
+							/>
+						</div>
+						<div className="fld">
+							<label className="lb" htmlFor="api-key">
+								API key
+							</label>
+							<div className="inw">
+								<input
+									id="api-key"
+									className="in m pr"
+									type={showApiKey ? 'text' : 'password'}
+									value={apiKey}
+									onChange={(e) => setApiKey(e.target.value)}
+								/>
+								<button
+									type="button"
+									className="ib"
+									onClick={() => setShowApiKey(!showApiKey)}
+									aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
+									aria-pressed={showApiKey}
+								>
+									{showApiKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+								</button>
+							</div>
+						</div>
 					</div>
+				</div>
 
-					<div className="flex flex-col gap-1.5">
-						<label className="text-xs text-muted-foreground">System Instruction</label>
-						<textarea
-							placeholder="Additional instructions for the agent..."
-							value={systemInstruction}
-							onChange={(e) => setSystemInstruction(e.target.value)}
-							rows={3}
-							className="text-xs rounded-md border border-input bg-background px-3 py-2 resize-y min-h-[60px]"
-						/>
+				{/* Behavior */}
+				<div className="sec">
+					<span className="lab">Behavior</span>
+					<div className="grp">
+						<div className="fld">
+							<label className="lb">Response language</label>
+							<div className="seg" role="radiogroup" aria-label="Response language">
+								{LANGUAGES.map(({ value, label }) => (
+									<button
+										key={label}
+										type="button"
+										role="radio"
+										aria-checked={language === value}
+										className={cn(language === value && 'on')}
+										onClick={() => setLanguage(value)}
+									>
+										{label}
+									</button>
+								))}
+							</div>
+						</div>
+						<div className="fld">
+							<label className="lb" htmlFor="max-steps">
+								Max steps
+							</label>
+							<input
+								id="max-steps"
+								className="in m"
+								inputMode="numeric"
+								placeholder="40"
+								min={1}
+								max={200}
+								value={maxSteps ?? ''}
+								onChange={(e) => setMaxSteps(e.target.value ? Number(e.target.value) : undefined)}
+							/>
+							<div className="hint">Between 1 and 200.</div>
+						</div>
 					</div>
+				</div>
 
-					<label className="flex items-center justify-between cursor-pointer">
-						<span className="text-xs text-muted-foreground">Disable named tool_choice</span>
-						<Switch checked={disableNamedToolChoice} onCheckedChange={setDisableNamedToolChoice} />
-					</label>
+				{/* Access */}
+				<div className="sec">
+					<span className="lab">Access</span>
+					<div className="grp">
+						<div className="fld">
+							<label className="lb" htmlFor="user-auth-token">
+								User auth token
+							</label>
+							<div className="inw">
+								<input
+									id="user-auth-token"
+									className="in m pr b"
+									readOnly
+									value={maskedToken}
+									aria-label="User auth token"
+								/>
+								<button
+									type="button"
+									className="ib b"
+									onClick={() => setShowToken(!showToken)}
+									disabled={!userAuthToken}
+									aria-label={showToken ? 'Hide token' : 'Show token'}
+									aria-pressed={showToken}
+								>
+									{showToken ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+								</button>
+								<button
+									type="button"
+									className="ib"
+									onClick={handleCopyToken}
+									disabled={!userAuthToken}
+									aria-label="Copy token"
+								>
+									{copied ? <span role="status">✓</span> : <Copy className="size-4" />}
+								</button>
+							</div>
+							<div className="hint">Gives a website the ability to call this extension.</div>
+						</div>
+					</div>
+				</div>
 
-					<label className="flex items-center justify-between cursor-pointer">
-						<span className="text-xs text-muted-foreground">Experimental llms.txt support</span>
-						<Switch checked={experimentalLlmsTxt} onCheckedChange={setExperimentalLlmsTxt} />
-					</label>
+				{/* Hub */}
+				<button
+					type="button"
+					className="rowb"
+					onClick={() => {
+						const wsPort = Number(import.meta.env.VITE_MCP_WS_PORT) || 38401
+						chrome.runtime
+							.sendMessage({ type: 'OPEN_HUB', wsPort })
+							.catch((err) => console.error('[ConfigPanel]: open hub failed', err))
+					}}
+				>
+					<Layers className="size-4" />
+					<span>Manage Page Agent Hub</span>
+					<ExternalLink className="size-3.5" />
+				</button>
 
-					<label className="flex items-center justify-between cursor-pointer">
-						<span className="text-xs text-muted-foreground">Experimental include all tabs</span>
-						<Switch
-							checked={experimentalIncludeAllTabs}
-							onCheckedChange={setExperimentalIncludeAllTabs}
-						/>
-					</label>
-				</>
-			)}
+				{/* Advanced */}
+				<div className="sec">
+					<button
+						type="button"
+						className="adv"
+						aria-expanded={advancedOpen}
+						onClick={() => setAdvancedOpen(!advancedOpen)}
+					>
+						Advanced
+						<ChevronDown className={cn('size-3.5', !advancedOpen && '-rotate-90')} />
+					</button>
+					{advancedOpen && (
+						<div className="grp">
+							<div className="fld">
+								<label className="lb" htmlFor="system-instruction">
+									System instruction
+								</label>
+								<textarea
+									id="system-instruction"
+									className="tx"
+									placeholder="Additional instructions for the agent…"
+									value={systemInstruction}
+									onChange={(e) => setSystemInstruction(e.target.value)}
+									rows={3}
+								/>
+							</div>
+							<div className="swr">
+								<span>Disable named tool_choice</span>
+								<Switch
+									checked={disableNamedToolChoice}
+									onChange={setDisableNamedToolChoice}
+									label="Disable named tool_choice"
+								/>
+							</div>
+							<div className="swr">
+								<span>Experimental llms.txt support</span>
+								<Switch
+									checked={experimentalLlmsTxt}
+									onChange={setExperimentalLlmsTxt}
+									label="Experimental llms.txt support"
+								/>
+							</div>
+							<div className="swr">
+								<span>Experimental include all tabs</span>
+								<Switch
+									checked={experimentalIncludeAllTabs}
+									onChange={setExperimentalIncludeAllTabs}
+									label="Experimental include all tabs"
+								/>
+							</div>
+						</div>
+					)}
+				</div>
+			</div>
 
-			<div className="flex gap-2 mt-2">
-				<Button variant="outline" onClick={onClose} className="flex-1 h-8 text-xs cursor-pointer">
+			{/* Save bar */}
+			<div className="sb">
+				<button type="button" className="btn lg" onClick={onClose}>
 					Cancel
-				</Button>
-				<Button
-					onClick={handleSave}
-					disabled={saving}
-					className="flex-1 h-8 text-xs cursor-pointer"
-				>
-					{saving ? <Loader2 className="size-3 animate-spin" /> : 'Save'}
-				</Button>
+				</button>
+				<button type="button" className="btn lg p" onClick={handleSave} disabled={saving}>
+					{saving ? <Loader2 className="size-3.5 spin" /> : 'Save'}
+				</button>
 			</div>
 
 			{/* Footer */}
-			<div className="mt-4 mb-4 pt-4 border-t border-border/50 flex gap-2 justify-between text-xs text-muted-foreground">
-				<div className="flex flex-col justify-between">
-					<span>
-						Version <span className="font-mono">v{__VERSION__}</span>
-					</span>
-
-					<a
-						href="https://github.com/alibaba/page-agent"
-						target="_blank"
-						rel="noopener noreferrer"
-						className="flex items-center gap-1 hover:text-foreground"
-					>
-						<svg role="img" viewBox="0 0 24 24" className="size-3 fill-current">
+			<div className="ft">
+				<div>
+					<span className="mono">v{__VERSION__}</span>
+					<a href="https://github.com/alibaba/page-agent" target="_blank" rel="noopener noreferrer">
+						<svg
+							role="img"
+							viewBox="0 0 24 24"
+							className="size-3 fill-current"
+							style={{ display: 'inline', verticalAlign: '-1px' }}
+						>
 							<path d={siGithub.path} />
-						</svg>
-						<span>Source Code</span>
+						</svg>{' '}
+						Source code
+					</a>
+					<a href="https://github.com/gaomeng1900" target="_blank" rel="noopener noreferrer">
+						Built with ♥ by @Simon
 					</a>
 				</div>
-
-				<div className="flex flex-col items-end">
-					<a
-						href="https://alibaba.github.io/page-agent/"
-						target="_blank"
-						rel="noopener noreferrer"
-						className="flex items-center gap-1 hover:text-foreground"
-					>
-						<Home className="size-3" />
-						<span>Home Page</span>
+				<div className="col2">
+					<a href="https://alibaba.github.io/page-agent/" target="_blank" rel="noopener noreferrer">
+						Home page
 					</a>
-
 					<a
 						href="https://github.com/alibaba/page-agent/blob/main/docs/terms-and-privacy.md"
 						target="_blank"
 						rel="noopener noreferrer"
-						className="flex items-center gap-1 hover:text-foreground"
 					>
-						<HatGlasses className="size-3" />
-						<span>Privacy</span>
+						Privacy
 					</a>
 				</div>
 			</div>
-
-			{/* attribute */}
-			<div className="text-xs text-muted-foreground bg-background fixed bottom-0 w-full flex justify-around">
-				<span className="leading-loose">
-					Built with ♥️ by{' '}
-					<a
-						href="https://github.com/gaomeng1900"
-						target="_blank"
-						rel="noopener noreferrer"
-						className="underline hover:text-foreground"
-					>
-						@Simon
-					</a>
-				</span>
-			</div>
-		</div>
+		</>
 	)
 }

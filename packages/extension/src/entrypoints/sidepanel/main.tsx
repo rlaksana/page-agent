@@ -5,6 +5,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 import App from './App'
 
+import '@/assets/design.css'
 import '@/assets/index.css'
 
 // Sync dark mode with system preference

@@ -1,13 +1,12 @@
 import type { AgentStatus } from '@page-agent/core'
 import { Motion } from 'ai-motion'
-import { BookOpen, Globe } from 'lucide-react'
+import { BookOpen, ChevronRight, FileText, Globe, Sparkle } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { siGithub } from 'simple-icons'
 
-import { TypingAnimation } from '@/components/ui/typing-animation'
 import { cn } from '@/lib/utils'
 
-// Status dot indicator
+// Status dot indicator (used by the hub entry)
 export function StatusDot({ status }: { status: AgentStatus }) {
 	const colorClass = {
 		idle: 'bg-muted-foreground',
@@ -39,7 +38,36 @@ export function Logo({ className }: { className?: string }) {
 	return <img src="/assets/page-agent-256.webp" alt="Page Agent" className={cn('', className)} />
 }
 
-// Full-screen ai-motion glow overlay, shown only while running
+/** Accent logo tile with the sparkle glyph (sidepanel header). */
+export function LogoMark({ className }: { className?: string }) {
+	return (
+		<span className={cn('logo', className)}>
+			<Sparkle className="size-3.5" />
+		</span>
+	)
+}
+
+const STATUS_PILL: Record<AgentStatus, { cls: string; label: string }> = {
+	idle: { cls: '', label: 'Ready' },
+	running: { cls: 'p-run', label: 'Running' },
+	completed: { cls: 'p-ok', label: 'Done' },
+	error: { cls: 'p-err', label: 'Error' },
+	stopped: { cls: 'p-warn', label: 'Stopped' },
+}
+
+/** Status pill in the header (design token colors per status). */
+export function StatusPill({ status }: { status: AgentStatus }) {
+	const pill = STATUS_PILL[status]
+
+	return (
+		<span className={cn('pill', pill.cls)}>
+			<span className="dot" />
+			{pill.label}
+		</span>
+	)
+}
+
+// Full-screen ai-motion glow overlay, shown only while running (used by the hub entry)
 export function MotionOverlay({ active }: { active: boolean }) {
 	const containerRef = useRef<HTMLDivElement>(null)
 	const motionRef = useRef<Motion | null>(null)
@@ -92,64 +120,118 @@ export function MotionOverlay({ active }: { active: boolean }) {
 	)
 }
 
-// Empty state with logo and breathing glow
-export function EmptyState() {
+const SUGGESTIONS = [
+	{ icon: FileText, text: 'Summarize this page' },
+	{ icon: TableIcon, text: 'Extract the table as Markdown' },
+	{ icon: FormIcon, text: 'Fill in this form for me' },
+]
+
+// Small inline SVGs for suggestions (lucide has no combined form/table glyph)
+function TableIcon({ className }: { className?: string }) {
 	return (
-		<div className="flex flex-col items-center justify-center h-full gap-4 text-center px-6">
-			<div className="relative select-none pointer-events-none">
-				<div className="absolute inset-0 -m-6 rounded-full bg-[conic-gradient(from_180deg,oklch(0.55_0.2_280),oklch(0.5_0.15_230),oklch(0.6_0.18_310),oklch(0.55_0.2_280))] blur-2xl animate-[glow-a_5s_ease-in-out_infinite]" />
-				<div className="absolute inset-0 -m-6 rounded-full bg-[conic-gradient(from_0deg,oklch(0.55_0.18_160),oklch(0.5_0.2_200),oklch(0.6_0.15_120),oklch(0.55_0.18_160))] blur-2xl animate-[glow-b_5s_ease-in-out_infinite]" />
-				<Logo className="relative size-20 opacity-80" />
+		<svg
+			className={className}
+			viewBox="0 0 24 24"
+			fill="none"
+			stroke="currentColor"
+			strokeWidth="2"
+			strokeLinecap="round"
+			strokeLinejoin="round"
+			aria-hidden="true"
+		>
+			<path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z" />
+			<path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65" />
+			<path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65" />
+		</svg>
+	)
+}
+
+function FormIcon({ className }: { className?: string }) {
+	return (
+		<svg
+			className={className}
+			viewBox="0 0 24 24"
+			fill="none"
+			stroke="currentColor"
+			strokeWidth="2"
+			strokeLinecap="round"
+			strokeLinejoin="round"
+			aria-hidden="true"
+		>
+			<rect width="20" height="16" x="2" y="4" rx="2" />
+			<path d="M6 8h.01" />
+			<path d="M10 8h.01" />
+			<path d="M14 8h.01" />
+			<path d="M18 8h.01" />
+			<path d="M8 12h.01" />
+			<path d="M12 12h.01" />
+			<path d="M16 12h.01" />
+			<path d="M7 16h10" />
+		</svg>
+	)
+}
+
+/** Empty state: breathing rings + logo tile + tagline + suggestion chips. */
+export function EmptyState({ onSuggest }: { onSuggest: (task: string) => void }) {
+	return (
+		<div className="empty">
+			<div className="rings">
+				<i />
+				<i />
+				<i />
+				<div className="bigl">
+					<Sparkle className="size-8" />
+				</div>
 			</div>
-			<div>
-				<h2 className="text-base font-medium text-foreground mb-1">Page Agent Ext</h2>
-				<TypingAnimation
-					className="text-sm text-muted-foreground"
-					words={[
-						'Enter a task to automate this page',
-						'Execute multi-page tasks',
-						'Call this extension from your web page',
-						'Use this extension in your own agents',
-					]}
-					cursorStyle="underscore"
-					loop
-					startOnView={false}
-					typeSpeed={20}
-					deleteSpeed={10}
-					pauseDelay={3000}
-				/>
+			<h1 className="h1">Page Agent</h1>
+			<div className="tagl">
+				Enter a task to automate this page
+				<span className="caret" />
 			</div>
-			<div className="flex items-center gap-3 mt-1 text-muted-foreground">
-				<a
-					href="https://github.com/alibaba/page-agent"
-					target="_blank"
-					rel="noopener noreferrer"
-					className="hover:text-foreground transition-colors"
-					title="GitHub"
-				>
-					<svg role="img" viewBox="0 0 24 24" className="size-4 fill-current">
-						<path d={siGithub.path} />
-					</svg>
-				</a>
-				<a
-					href="https://alibaba.github.io/page-agent/docs/features/chrome-extension"
-					target="_blank"
-					rel="noopener noreferrer"
-					className="hover:text-foreground transition-colors"
-					title="Documentation"
-				>
-					<BookOpen className="size-4" />
-				</a>
-				<a
-					href="https://alibaba.github.io/page-agent"
-					target="_blank"
-					rel="noopener noreferrer"
-					className="hover:text-foreground transition-colors"
-					title="Website"
-				>
-					<Globe className="size-4" />
-				</a>
+			<div className="sugs">
+				{SUGGESTIONS.map(({ icon: Icon, text }) => (
+					<button key={text} type="button" className="sug" onClick={() => onSuggest(text)}>
+						<Icon className="size-4" />
+						<span>{text}</span>
+						<ChevronRight className="size-3.5" />
+					</button>
+				))}
 			</div>
+		</div>
+	)
+}
+
+/** GitHub / Docs / Website links row under the empty state. */
+export function HomeLinks() {
+	return (
+		<div className="links">
+			<a
+				className="btn g"
+				href="https://github.com/alibaba/page-agent"
+				target="_blank"
+				rel="noopener noreferrer"
+			>
+				<svg role="img" viewBox="0 0 24 24" className="size-3.5 fill-current" aria-hidden="true">
+					<path d={siGithub.path} />
+				</svg>{' '}
+				GitHub
+			</a>
+			<a
+				className="btn g"
+				href="https://alibaba.github.io/page-agent/docs/features/chrome-extension"
+				target="_blank"
+				rel="noopener noreferrer"
+			>
+				<BookOpen className="size-3.5" /> Docs
+			</a>
+			<a
+				className="btn g"
+				href="https://alibaba.github.io/page-agent"
+				target="_blank"
+				rel="noopener noreferrer"
+			>
+				<Globe className="size-3.5" /> Website
+			</a>
 		</div>
 	)
 }

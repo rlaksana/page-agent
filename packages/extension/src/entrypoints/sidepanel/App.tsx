@@ -1,19 +1,14 @@
-import { Check, Copy, History, Send, Settings, Square } from 'lucide-react'
+import type { HistoricalEvent } from '@page-agent/core'
+import { ArrowUp, Copy, Download, History, Pencil, RotateCcw, Settings, Square } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { ConfigPanel } from '@/components/ConfigPanel'
 import { HistoryDetail } from '@/components/HistoryDetail'
 import { HistoryList } from '@/components/HistoryList'
-import { ActivityCard, EventCard } from '@/components/cards'
-import { EmptyState, Logo, MotionOverlay, StatusDot } from '@/components/misc'
-import { Button } from '@/components/ui/button'
-import {
-	InputGroup,
-	InputGroupAddon,
-	InputGroupButton,
-	InputGroupTextarea,
-} from '@/components/ui/input-group'
+import { ActivityCard, CopyIconButton, EventCard } from '@/components/cards'
+import { EmptyState, HomeLinks, LogoMark, StatusPill } from '@/components/misc'
 import { saveSession } from '@/lib/db'
+import { cn } from '@/lib/utils'
 
 import { TabsController } from '../../agent/TabsController'
 import { useAgent } from '../../agent/useAgent'
@@ -27,7 +22,6 @@ type View =
 export default function App() {
 	const [view, setView] = useState<View>({ name: 'chat' })
 	const [inputValue, setInputValue] = useState('')
-	const [taskCopied, setTaskCopied] = useState(false)
 	const historyRef = useRef<HTMLDivElement>(null)
 	const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -109,7 +103,6 @@ export default function App() {
 	)
 
 	const handleStop = useCallback(() => {
-		console.log('[SidePanel] Stopping task...')
 		stop()
 	}, [stop])
 
@@ -120,168 +113,265 @@ export default function App() {
 		}
 	}
 
+	const suggest = useCallback((task: string) => {
+		setInputValue(task)
+		textareaRef.current?.focus()
+	}, [])
+
+	const editTask = useCallback(() => {
+		setInputValue(currentTask)
+		textareaRef.current?.focus()
+	}, [currentTask])
+
 	// --- View routing ---
 
 	if (view.name === 'config') {
 		return (
-			<ConfigPanel
-				config={config}
-				onSave={async (newConfig) => {
-					await configure(newConfig)
-					setView({ name: 'chat' })
-				}}
-				onClose={() => setView({ name: 'chat' })}
-			/>
+			<div className="ps">
+				<ConfigPanel
+					config={config}
+					onSave={async (newConfig) => {
+						await configure(newConfig)
+						setView({ name: 'chat' })
+					}}
+					onClose={() => setView({ name: 'chat' })}
+				/>
+			</div>
 		)
 	}
 
 	if (view.name === 'history') {
 		return (
-			<HistoryList
-				onSelect={(id) => setView({ name: 'history-detail', sessionId: id })}
-				onBack={() => setView({ name: 'chat' })}
-				onRerun={runTask}
-			/>
+			<div className="ps">
+				<HistoryList
+					onSelect={(id) => setView({ name: 'history-detail', sessionId: id })}
+					onBack={() => setView({ name: 'chat' })}
+					onRerun={runTask}
+				/>
+			</div>
 		)
 	}
 
 	if (view.name === 'history-detail') {
 		return (
-			<HistoryDetail
-				sessionId={view.sessionId}
-				onBack={() => setView({ name: 'history' })}
-				onRerun={runTask}
-			/>
+			<div className="ps">
+				<HistoryDetail
+					sessionId={view.sessionId}
+					onBack={() => setView({ name: 'history' })}
+					onRerun={runTask}
+				/>
+			</div>
 		)
 	}
 
 	// --- Chat view ---
 
 	const showEmptyState = !currentTask && history.length === 0 && !isRunning
+	const stepCount = history.filter((e) => e.type === 'step').length
+	const maxSteps = config?.maxSteps ?? 40
+	const progress = Math.min(100, Math.round((stepCount / maxSteps) * 100))
+
+	const lastStepIdx = (() => {
+		for (let i = history.length - 1; i >= 0; i--) {
+			if (history[i].type === 'step') return i
+		}
+		return -1
+	})()
+
+	// Final result text from the last `done` step, if any.
+	const resultText = (() => {
+		for (let i = history.length - 1; i >= 0; i--) {
+			const e = history[i]
+			if (e.type === 'step' && e.action?.name === 'done') {
+				const input = e.action.input as { text?: string }
+				return input?.text || e.action.output || ''
+			}
+		}
+		return ''
+	})()
+
+	const isFailed = status === 'error'
+	const isFinished = status === 'completed' || status === 'stopped' || isFailed
+
+	const saveResultAsFile = () => {
+		const blob = new Blob([resultText], { type: 'text/markdown' })
+		const url = URL.createObjectURL(blob)
+		const a = document.createElement('a')
+		a.href = url
+		a.download = 'page-agent-result.md'
+		a.click()
+		URL.revokeObjectURL(url)
+	}
+
+	const placeholder = isRunning
+		? 'Agent is working… stop it to type a new task'
+		: isFailed
+			? 'Describe what to change, or start a new task…'
+			: isFinished
+				? 'Ask a follow-up or start a new task…'
+				: 'Describe your task…'
 
 	return (
-		<div className="relative flex flex-col h-screen bg-background">
-			<MotionOverlay active={isRunning} />
+		<div className="ps">
+			{isRunning && <div className="glowb" />}
+
 			{/* Header */}
-			<header className="flex items-center justify-between border-b px-3 py-2">
-				<div className="flex items-center gap-2">
-					<Logo className="size-5" />
-					<span className="text-sm font-medium">Page Agent Ext</span>
-				</div>
-				<div className="flex items-center gap-1">
-					<StatusDot status={status} />
-					<Button
-						variant="ghost"
-						size="icon-sm"
-						onClick={() => setView({ name: 'history' })}
-						className="cursor-pointer"
-						aria-label="History"
-						title="History"
-					>
-						<History className="size-3.5" />
-					</Button>
-					<Button
-						variant="ghost"
-						size="icon-sm"
-						onClick={() => setView({ name: 'config' })}
-						className="cursor-pointer"
-						aria-label="Settings"
-						title="Settings"
-					>
-						<Settings className="size-3.5" />
-					</Button>
-				</div>
+			<header className="hd">
+				<LogoMark />
+				<span className="ttl">Page Agent</span>
+				<span className="sp" />
+				<StatusPill status={status} />
+				<button
+					type="button"
+					className="ib"
+					onClick={() => setView({ name: 'history' })}
+					aria-label="History"
+					title="History"
+				>
+					<History className="size-4" />
+				</button>
+				<button
+					type="button"
+					className="ib"
+					onClick={() => setView({ name: 'config' })}
+					aria-label="Settings"
+					title="Settings"
+				>
+					<Settings className="size-4" />
+				</button>
 			</header>
 
-			{/* Content */}
-			<main className="flex-1 overflow-hidden flex flex-col">
-				{/* Current task */}
-				{currentTask && (
-					<div className="border-b px-3 py-2 bg-muted/30">
-						<div className="flex items-center justify-between gap-2">
-							<div className="text-xs text-muted-foreground uppercase tracking-wide">Task</div>
-							<button
-								type="button"
-								onClick={async () => {
-									await navigator.clipboard.writeText(currentTask)
-									setTaskCopied(true)
-									setTimeout(() => setTaskCopied(false), 1500)
-								}}
-								className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/80 border border-border/40 rounded transition-colors cursor-pointer shrink-0"
-								title="Copy task"
-								aria-label="Copy task"
-							>
-								{taskCopied ? (
-									<>
-										<Check className="size-3 text-green-500" />
-										<span className="text-green-600 dark:text-green-400">Copied!</span>
-									</>
-								) : (
-									<>
-										<Copy className="size-3" />
-										<span>Copy</span>
-									</>
-								)}
-							</button>
-						</div>
-						<div className="text-xs font-medium mt-1 line-clamp-2" title={currentTask}>
-							{currentTask}
-						</div>
+			{/* Task banner (only while running — afterwards the task appears as a user bubble) */}
+			{isRunning && currentTask && (
+				<div className="task">
+					<div className="tr">
+						<span className="lab">Task</span>
+						<span className="sp" />
+						<span className="meta">
+							Step {stepCount} / {maxSteps}
+						</span>
+						<CopyIconButton text={currentTask} label="Copy task" />
 					</div>
-				)}
+					<p className="tt" title={currentTask}>
+						{currentTask}
+					</p>
+					<div className="prog">
+						<i style={{ width: `${progress}%` }} />
+					</div>
+				</div>
+			)}
 
-				{/* History */}
-				<div ref={historyRef} className="flex-1 overflow-y-auto p-3 space-y-2">
-					{showEmptyState && <EmptyState />}
+			{/* Content */}
+			{showEmptyState ? (
+				<>
+					<EmptyState onSuggest={suggest} />
+					<HomeLinks />
+				</>
+			) : (
+				<main ref={historyRef} className={cn('feed', isRunning && 'end fade')}>
+					{!isRunning && currentTask && <div className="usr">{currentTask}</div>}
 
-					{history.map((event, index) => (
-						<EventCard key={index} event={event} />
+					{history.map((event: HistoricalEvent, index: number) => (
+						<EventCard
+							key={index}
+							event={event}
+							running={isRunning && index === lastStepIdx}
+							last={index === lastStepIdx && !activity}
+						/>
 					))}
 
-					{/* Activity indicator at bottom */}
 					{activity && <ActivityCard activity={activity} />}
-				</div>
-			</main>
 
-			{/* Input */}
-			<footer className="border-t p-3">
-				<InputGroup className="relative rounded-lg">
-					<InputGroupTextarea
+					{/* Result actions */}
+					{isFinished && resultText && (
+						<div className="acts" style={{ marginLeft: 0, gap: 8 }}>
+							<button
+								type="button"
+								className="btn g"
+								onClick={() => navigator.clipboard.writeText(resultText)}
+							>
+								<Copy className="size-3.5" /> Copy
+							</button>
+							<button type="button" className="btn g" onClick={saveResultAsFile}>
+								<Download className="size-3.5" /> Save .md
+							</button>
+							<span className="vr" />
+							<button
+								type="button"
+								className="ib"
+								onClick={() => runTask(currentTask)}
+								aria-label="Run again"
+								title="Run again"
+							>
+								<RotateCcw className="size-3.5" />
+							</button>
+							<button
+								type="button"
+								className="ib"
+								onClick={editTask}
+								aria-label="Edit task"
+								title="Edit task"
+							>
+								<Pencil className="size-3.5" />
+							</button>
+						</div>
+					)}
+
+					{/* Error actions */}
+					{isFailed && !resultText && (
+						<div className="acts" style={{ marginLeft: 0, gap: 8 }}>
+							<button type="button" className="btn lg p" onClick={() => runTask(currentTask)}>
+								Run again
+							</button>
+							<button type="button" className="btn lg" onClick={editTask}>
+								Edit task
+							</button>
+						</div>
+					)}
+				</main>
+			)}
+
+			{/* Composer */}
+			<footer className="cmp">
+				<div className={cn('box', isRunning && 'off')}>
+					<textarea
 						ref={textareaRef}
-						placeholder="Describe your task... (Enter to send)"
+						className="ta2"
+						rows={2}
+						placeholder={placeholder}
 						value={inputValue}
 						onChange={(e) => setInputValue(e.target.value)}
 						onKeyDown={handleKeyDown}
 						disabled={isRunning}
-						className="text-xs pr-12 min-h-10"
 					/>
-					<InputGroupAddon align="inline-end" className="absolute bottom-0 right-0">
+					<div className="cr">
+						{config?.model && <span className="chip">{config.model}</span>}
+						{!isRunning && <span className="kbd">Enter to send · Shift+Enter for newline</span>}
+						<span className="sp" />
 						{isRunning ? (
-							<InputGroupButton
-								size="icon-sm"
-								variant="destructive"
+							<button
+								type="button"
+								className="send stop"
 								onClick={handleStop}
-								className="size-7"
 								aria-label="Stop task"
 								title="Stop task"
 							>
-								<Square className="size-3" />
-							</InputGroupButton>
+								<Square className="size-3.5" /> Stop
+							</button>
 						) : (
-							<InputGroupButton
-								size="icon-sm"
-								variant="default"
-								onClick={() => handleSubmit()}
+							<button
+								type="button"
+								className="send"
 								disabled={!inputValue.trim()}
-								className="size-7 cursor-pointer"
+								onClick={() => handleSubmit()}
 								aria-label="Send"
 								title="Send"
 							>
-								<Send className="size-3" />
-							</InputGroupButton>
+								<ArrowUp className="size-4" />
+							</button>
 						)}
-					</InputGroupAddon>
-				</InputGroup>
+					</div>
+				</div>
 			</footer>
 		</div>
 	)

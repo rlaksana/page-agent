@@ -8,15 +8,17 @@ import type {
 } from '@page-agent/core'
 import {
 	Check,
-	CheckCircle,
+	ChevronDown,
+	ChevronRight,
+	ChevronsDown,
+	CircleCheck,
 	Copy,
 	Eye,
 	Globe,
 	Keyboard,
-	Mouse,
-	MoveVertical,
+	MousePointerClick,
 	RefreshCw,
-	Sparkles,
+	Sparkle,
 	XCircle,
 	Zap,
 } from 'lucide-react'
@@ -26,76 +28,161 @@ import remarkGfm from 'remark-gfm'
 
 import { cn } from '@/lib/utils'
 
-// Markdown renderer component with styled elements
-function MarkdownContent({ content }: { content: string }) {
+// ---------------------------------------------------------------------------
+// Small shared pieces
+// ---------------------------------------------------------------------------
+
+/** Icon button that copies `text` and swaps to a check for 1.5s. */
+export function CopyIconButton({
+	text,
+	label,
+	className,
+}: {
+	text: string
+	label: string
+	className?: string
+}) {
+	const [copied, setCopied] = useState(false)
+
+	return (
+		<button
+			type="button"
+			className={cn('ib sm cp', className)}
+			aria-label={label}
+			title={label}
+			onClick={() => {
+				navigator.clipboard.writeText(text)
+				setCopied(true)
+				setTimeout(() => setCopied(false), 1500)
+			}}
+		>
+			{copied ? (
+				<Check className="size-3.5" style={{ color: 'var(--ok)' }} />
+			) : (
+				<Copy className="size-3.5" />
+			)}
+		</button>
+	)
+}
+
+/** Minimal JSON tokenizer producing the design's jk/js/jn/jm color spans. */
+function JsonCode({ value }: { value: unknown }) {
+	const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2)
+	const re = /("(?:[^"\\]|\\.)*")(\s*:)?|\b(?:true|false|null)\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g
+	const parts: React.ReactNode[] = []
+	let last = 0
+	let m: RegExpExecArray | null
+	while ((m = re.exec(text))) {
+		if (m.index > last) {
+			parts.push(
+				<span key={parts.length} className="jm">
+					{text.slice(last, m.index)}
+				</span>
+			)
+		}
+		if (m[1] && m[2]) {
+			parts.push(
+				<span key={parts.length} className="jk">
+					{m[1]}
+				</span>,
+				<span key={parts.length} className="jm">
+					{m[2]}
+				</span>
+			)
+		} else if (m[1]) {
+			parts.push(
+				<span key={parts.length} className="js">
+					{m[1]}
+				</span>
+			)
+		} else {
+			parts.push(
+				<span key={parts.length} className="jn">
+					{m[0]}
+				</span>
+			)
+		}
+		last = re.lastIndex
+	}
+	if (last < text.length) {
+		parts.push(
+			<span key={parts.length} className="jm">
+				{text.slice(last)}
+			</span>
+		)
+	}
+	return <>{parts}</>
+}
+
+/** Labeled read-only code block (Input / Output / Raw …) with a copy button. */
+function CodeBlock({ label, value }: { label: string; value: unknown }) {
+	const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2)
+
+	return (
+		<div>
+			<div className="lab">{label}</div>
+			<pre className="code mono">
+				<JsonCode value={value} />
+				<CopyIconButton text={text} label={`Copy ${label.toLowerCase()}`} />
+			</pre>
+		</div>
+	)
+}
+
+// ---------------------------------------------------------------------------
+// Markdown (result answers) — styled entirely by the `.md` rules in design.css
+// ---------------------------------------------------------------------------
+
+export function MarkdownContent({ content }: { content: string }) {
 	return (
 		<ReactMarkdown
 			remarkPlugins={[remarkGfm]}
 			components={{
-				p: ({ children }) => <p className="mb-1.5 last:mb-0 leading-relaxed">{children}</p>,
-				ol: ({ children }) => (
-					<ol className="list-decimal list-outside pl-4 space-y-1 my-1.5">{children}</ol>
-				),
-				ul: ({ children }) => (
-					<ul className="list-disc list-outside pl-4 space-y-1 my-1.5">{children}</ul>
-				),
-				li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-				h1: ({ children }) => <h1 className="text-sm font-bold mt-2 mb-1">{children}</h1>,
-				h2: ({ children }) => <h2 className="text-xs font-bold mt-2 mb-1">{children}</h2>,
-				h3: ({ children }) => <h3 className="text-xs font-semibold mt-1.5 mb-0.5">{children}</h3>,
-				h4: ({ children }) => <h4 className="text-xs font-semibold mt-1 mb-0.5">{children}</h4>,
-				blockquote: ({ children }) => (
-					<blockquote className="border-l-2 border-primary/40 pl-2.5 my-1.5 italic text-muted-foreground">
+				a: ({ href, children }) => (
+					<a href={href} target="_blank" rel="noopener noreferrer">
 						{children}
-					</blockquote>
+					</a>
 				),
+				// Inline code vs block code: react-markdown renders block code as pre>code.
 				code: ({ className, children, ...props }) => {
-					const isInline = !className && typeof children === 'string' && !children.includes('\n')
-					if (isInline) {
+					const isBlock = typeof className === 'string' && className.includes('language-')
+					if (isBlock) {
 						return (
-							<code
-								className="bg-muted/80 text-foreground px-1 py-0.5 rounded text-xs font-mono border border-border/40"
-								{...props}
-							>
+							<code className={className} {...props}>
 								{children}
 							</code>
 						)
 					}
 					return (
-						<code className={cn('text-xs font-mono', className)} {...props}>
+						<code className="i" {...props}>
 							{children}
 						</code>
 					)
 				},
-				pre: ({ children }) => (
-					<pre className="bg-muted p-2 rounded-md overflow-x-auto my-1.5 border border-border/40 text-xs">
-						{children}
-					</pre>
-				),
-				a: ({ href, children }) => (
-					<a
-						href={href}
-						target="_blank"
-						rel="noopener noreferrer"
-						className="text-primary underline underline-offset-2 hover:text-primary/80 break-all"
-					>
-						{children}
-					</a>
-				),
+				pre: ({ children }) => {
+					// Extract language + raw text for the header/copy affordances.
+					const child = Array.isArray(children) ? children[0] : children
+					const lang =
+						/language-(\w+)/.exec(
+							(child as { props?: { className?: string } })?.props?.className ?? ''
+						)?.[1] ?? 'code'
+					const raw = extractText(child)
+					return (
+						<div className="cb">
+							<div className="cbh">
+								<span className="lab">{lang}</span>
+								<span className="sp" />
+								<CopyIconButton text={raw} label="Copy code" />
+							</div>
+							<pre>{children}</pre>
+						</div>
+					)
+				},
 				table: ({ children }) => (
-					<div className="overflow-x-auto my-2">
-						<table className="w-full border-collapse border border-border text-xs">
-							{children}
-						</table>
+					<div className="tw">
+						<table>{children}</table>
 					</div>
 				),
-				th: ({ children }) => (
-					<th className="border border-border bg-muted/60 px-2 py-1 font-semibold text-left">
-						{children}
-					</th>
-				),
-				td: ({ children }) => <td className="border border-border px-2 py-1">{children}</td>,
-				hr: () => <hr className="my-2 border-border/40" />,
 			}}
 		>
 			{content}
@@ -103,396 +190,350 @@ function MarkdownContent({ content }: { content: string }) {
 	)
 }
 
-// Result card for done action
-function ResultCard({
-	success,
-	text,
-	children,
-}: {
-	success: boolean
-	text: string
-	children?: React.ReactNode
-}) {
-	const [copied, setCopied] = useState(false)
+function extractText(node: React.ReactNode): string {
+	if (node == null || typeof node === 'boolean') return ''
+	if (typeof node === 'string' || typeof node === 'number') return String(node)
+	if (Array.isArray(node)) return node.map(extractText).join('')
+	const el = node as { props?: { children?: React.ReactNode } }
+	return el.props ? extractText(el.props.children) : ''
+}
 
-	const handleCopy = () => {
-		navigator.clipboard.writeText(text)
-		setCopied(true)
-		setTimeout(() => setCopied(false), 1500)
-	}
+// ---------------------------------------------------------------------------
+// Result card (final answer of a `done` action)
+// ---------------------------------------------------------------------------
 
+export function ResultCard({ success, text }: { success: boolean; text: string }) {
 	return (
-		<div
-			className={cn(
-				'rounded-lg border p-3',
-				success ? 'border-green-500/30 bg-green-500/10' : 'border-destructive/30 bg-destructive/10'
-			)}
-		>
-			<div className="flex items-center gap-2 mb-2">
-				{success ? (
-					<CheckCircle className="size-3.5 text-green-500" />
-				) : (
-					<XCircle className="size-3.5 text-destructive" />
-				)}
-				<span
-					className={cn(
-						'text-xs font-medium',
-						success ? 'text-green-600 dark:text-green-400' : 'text-destructive'
-					)}
-				>
-					Result: {success ? 'Success' : 'Failed'}
+		<div className="res">
+			<div className="rh">
+				<span className={cn('pill', success ? 'p-ok' : 'p-err')}>
+					<span className="dot" />
+					{success ? 'Success' : 'Failed'}
 				</span>
-			</div>
-			<div className="text-sm text-foreground pl-5 break-words">
-				<MarkdownContent content={text} />
+				<span className="sp" />
+				{text && <CopyIconButton text={text} label="Copy result" />}
 			</div>
 			{text && (
-				<div className="mt-3 pt-2 pl-5 border-t border-border/30 flex items-center justify-end">
-					<button
-						type="button"
-						onClick={handleCopy}
-						className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/80 border border-border/50 rounded-md transition-colors cursor-pointer bg-background/60"
-						aria-label="Copy result"
-					>
-						{copied ? (
-							<>
-								<Check className="size-3 text-green-500" />
-								<span className="text-green-600 dark:text-green-400">Copied!</span>
-							</>
-						) : (
-							<>
-								<Copy className="size-3" />
-								<span>Copy</span>
-							</>
-						)}
-					</button>
+				<div className="md">
+					<MarkdownContent content={text} />
 				</div>
 			)}
-			{children}
 		</div>
 	)
 }
 
-// Single reflection item with truncation
-function ReflectionItem({ icon, value }: { icon: string; value: string }) {
-	const [expanded, setExpanded] = useState(false)
+// ---------------------------------------------------------------------------
+// Step card — one timeline node with reflection + tool action
+// ---------------------------------------------------------------------------
 
-	return (
-		<Fragment>
-			<span className="text-xs flex justify-center">{icon}</span>
-			<span
-				className={cn(
-					'text-xs text-muted-foreground cursor-pointer hover:text-muted-foreground/70',
-					!expanded && 'line-clamp-1'
-				)}
-				onClick={() => setExpanded(!expanded)}
-			>
-				{value}
-			</span>
-		</Fragment>
-	)
+/** Icon for an action name (lucide equivalents of the design's tool glyphs). */
+function ActionIcon({ name, className }: { name: string; className?: string }) {
+	const icons: Record<string, React.ReactNode> = {
+		click_element_by_index: <MousePointerClick className={className} />,
+		input: <Keyboard className={className} />,
+		scroll: <ChevronsDown className={className} />,
+		go_to_url: <Globe className={className} />,
+		done: <CircleCheck className={className} />,
+	}
+	return icons[name] ?? <Zap className={className} />
 }
 
-// Reflection section in step card
+/** Collapsible reflection (eval / memory / next goal) rows. */
 function ReflectionSection({
 	reflection,
+	defaultOpen,
 }: {
-	reflection: {
-		evaluation_previous_goal?: string
-		memory?: string
-		next_goal?: string
-	}
+	reflection: AgentStepEvent['reflection']
+	defaultOpen: boolean
 }) {
+	const [open, setOpen] = useState(defaultOpen)
 	const items = [
-		{ icon: '☑️', label: 'eval', value: reflection.evaluation_previous_goal },
-		{ icon: '🧠', label: 'memory', value: reflection.memory },
-		{ icon: '🎯', label: 'goal', value: reflection.next_goal },
+		{ label: 'Eval', value: reflection.evaluation_previous_goal },
+		{ label: 'Memory', value: reflection.memory },
+		{ label: 'Next', value: reflection.next_goal },
 	].filter((item) => item.value)
 
 	if (items.length === 0) return null
 
 	return (
-		<div className="mb-2">
-			{/* <div className="text-xs font-semibold text-foreground uppercase tracking-wide mb-2">
-				Reflection
-			</div> */}
-			<div className="grid grid-cols-[14px_1fr] gap-x-2 gap-y-2">
-				{items.map((item) => (
-					<ReflectionItem key={item.label} icon={item.icon} value={item.value!} />
-				))}
-			</div>
-		</div>
+		<>
+			<button type="button" className="think" aria-expanded={open} onClick={() => setOpen(!open)}>
+				<Sparkle className="size-3.5" />
+				<span>Reflection</span>
+				{open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+			</button>
+			{open && (
+				<div className="thinkbox">
+					<div className="rows">
+						{items.map((item) => (
+							<div key={item.label} className="rw">
+								<span className="lab">{item.label}</span>
+								<p>{item.value}</p>
+							</div>
+						))}
+					</div>
+				</div>
+			)}
+		</>
 	)
 }
 
-// Get icon for action type
-function ActionIcon({ name, className }: { name: string; className?: string }) {
-	const icons: Record<string, React.ReactNode> = {
-		click_element_by_index: <Mouse className={className} />,
-		input: <Keyboard className={className} />,
-		scroll: <MoveVertical className={className} />,
-		go_to_url: <Globe className={className} />,
-	}
-	return icons[name] || <Zap className={className} />
-}
-
-// Copy button with "Copied!" feedback
-function CopyButton({ text, label }: { text: string; label: string }) {
-	const [copied, setCopied] = useState(false)
-
-	return (
-		<button
-			type="button"
-			onClick={() => {
-				navigator.clipboard.writeText(text)
-				setCopied(true)
-				setTimeout(() => setCopied(false), 1500)
-			}}
-			className="text-xs text-muted-foreground hover:text-foreground transition-colors border px-1 rounded shrink-0 cursor-pointer backdrop-blur-xs"
-		>
-			{copied ? 'Copied!' : label}
-		</button>
-	)
-}
-
-// Extract message content by role from raw request
-function extractPrompt(rawRequest: unknown, role: 'system' | 'user'): string | null {
-	const messages = (rawRequest as { messages?: { role: string; content?: unknown }[] })?.messages
-	if (!messages) return null
-	if (!Array.isArray(messages)) return null
-	const msg =
-		role === 'system'
-			? messages.find((m) => m.role === role)
-			: messages.findLast((m) => m.role === role)
-	if (!msg?.content) return null
-	return typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content, null, 2)
-}
-
-// Raw request/response section (collapsible tabs, for debugging)
+/** Raw request/response debug tabs, restyled for the tool body. */
 function RawSection({ rawRequest, rawResponse }: { rawRequest?: unknown; rawResponse?: unknown }) {
-	const [activeTab, setActiveTab] = useState<'request' | 'response' | null>(null)
+	const [tab, setTab] = useState<'request' | 'response' | null>(null)
 
-	if (!rawRequest && !rawResponse) return null
+	if (rawRequest == null && rawResponse == null) return null
 
-	const handleTabClick = (tab: 'request' | 'response') => {
-		setActiveTab(activeTab === tab ? null : tab)
-	}
-
-	const content =
-		activeTab === 'request' ? rawRequest : activeTab === 'response' ? rawResponse : null
-
-	const systemPrompt = activeTab === 'request' ? extractPrompt(rawRequest, 'system') : null
-	const userPrompt = activeTab === 'request' ? extractPrompt(rawRequest, 'user') : null
+	const content = tab === 'request' ? rawRequest : tab === 'response' ? rawResponse : null
 
 	return (
-		<div className="mt-2 border-t border-dashed pt-2">
-			<div className="flex items-center gap-3 -my-1">
+		<div>
+			<div className="lab" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+				Raw
 				{rawRequest != null && (
 					<button
 						type="button"
-						onClick={() => handleTabClick('request')}
-						className={cn(
-							'text-xs mt-0.5 transition-colors border-b cursor-pointer',
-							activeTab === 'request'
-								? 'text-foreground border-foreground'
-								: 'text-muted-foreground border-transparent hover:text-foreground'
-						)}
+						className={cn('think', tab === 'request' && 'on')}
+						style={{ display: 'inline-flex', height: 'auto', width: 'auto', padding: 0 }}
+						aria-expanded={tab === 'request'}
+						onClick={() => setTab(tab === 'request' ? null : 'request')}
 					>
-						Raw Request
+						Request
 					</button>
 				)}
 				{rawResponse != null && (
 					<button
 						type="button"
-						onClick={() => handleTabClick('response')}
-						className={cn(
-							'text-xs mt-0.5 transition-colors border-b cursor-pointer',
-							activeTab === 'response'
-								? 'text-foreground border-foreground'
-								: 'text-muted-foreground border-transparent hover:text-foreground'
-						)}
+						className={cn('think', tab === 'response' && 'on')}
+						style={{ display: 'inline-flex', height: 'auto', width: 'auto', padding: 0 }}
+						aria-expanded={tab === 'response'}
+						onClick={() => setTab(tab === 'response' ? null : 'response')}
 					>
-						Raw Response
+						Response
 					</button>
 				)}
 			</div>
 			{content != null && (
-				<div className="relative mt-1.5">
-					<div className="absolute top-1 right-1 flex gap-1">
-						{systemPrompt && <CopyButton text={systemPrompt} label="Copy System" />}
-						{userPrompt && <CopyButton text={userPrompt} label="Copy User" />}
-						<CopyButton text={JSON.stringify(content, null, 4)} label="Copy" />
-					</div>
-					<pre className="p-2 pt-5 text-xs text-foreground/70 bg-muted rounded overflow-x-auto max-h-60 overflow-y-auto">
-						{JSON.stringify(content, null, 4)}
-					</pre>
-				</div>
+				<CodeBlock label={tab === 'request' ? 'Request' : 'Response'} value={content} />
 			)}
 		</div>
 	)
 }
 
-function StepCard({ event }: { event: AgentStepEvent }) {
+export function StepCard({
+	event,
+	running,
+	last,
+}: {
+	event: AgentStepEvent
+	running?: boolean
+	last?: boolean
+}) {
+	const [open, setOpen] = useState(false)
+	const isDone = event.action?.name === 'done'
+	const doneInput = isDone ? (event.action.input as { text?: string; success?: boolean }) : null
+
 	return (
-		<div className="rounded-lg border-l-2 border-l-blue-500/50 border bg-muted/40 p-2.5">
-			<div className="text-xs font-semibold text-foreground tracking-wide mb-2">
-				Step #{event.stepIndex! + 1}
+		<div className={cn('st', last && 'last')}>
+			<span className={cn('node', running ? 'n-run' : 'n-ok')}>{event.stepIndex + 1}</span>
+			<div className="sh">
+				<span>Step {event.stepIndex + 1}</span>
 			</div>
+			<div className="stack">
+				<ReflectionSection reflection={event.reflection} defaultOpen={!!running} />
 
-			{/* Reflection */}
-			{event.reflection && <ReflectionSection reflection={event.reflection} />}
-
-			{/* Action */}
-			{event.action && (
-				<div>
-					<div className="text-xs font-semibold text-foreground tracking-wide mb-1">Actions</div>
-					<div className="flex items-start gap-2">
-						<ActionIcon
-							name={event.action.name}
-							className="size-3.5 text-blue-500 shrink-0 mt-0.5"
-						/>
-						<div className="flex-1 min-w-0">
-							<p className="text-xs text-foreground/80 mb-0.5 wrap-anywhere break-all line-clamp-1 hover:line-clamp-none">
-								<span className="font-medium text-foreground/70">{event.action.name}</span>
-								{event.action.name !== 'done' && (
-									<span className="text-muted-foreground/70 ml-1.5">
-										{JSON.stringify(event.action.input)}
-									</span>
-								)}
-							</p>
-							<p className="text-xs text-muted-foreground/70 grid grid-cols-[auto_1fr] gap-1.5">
-								<span className="">└</span>
-								<span className="wrap-anywhere break-all line-clamp-1 hover:line-clamp-3">
-									{event.action.output}
-								</span>
-							</p>
+				<div className={cn('tool', running && 'run')}>
+					<button type="button" className="th" aria-expanded={open} onClick={() => setOpen(!open)}>
+						<span className="ti">
+							<ActionIcon name={event.action.name} className="size-3.5" />
+						</span>
+						<span className="tmain">
+							<span className="tn">{event.action.name}</span>
+							<span className="ta">
+								{isDone
+									? doneInput?.success === false
+										? 'failed'
+										: 'success'
+									: JSON.stringify(event.action.input)}
+							</span>
+						</span>
+						{running ? (
+							<span className="ts run">
+								<RefreshCw className="size-3 spin" /> Running
+							</span>
+						) : (
+							<span className="ts ok">
+								<Check className="size-3" />
+							</span>
+						)}
+						<span className="mut">
+							{open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+						</span>
+					</button>
+					{running && <div className="shim" />}
+					{open && (
+						<div className="tb">
+							{!isDone && <CodeBlock label="Input" value={event.action.input} />}
+							<CodeBlock label="Output" value={event.action.output} />
+							<RawSection rawRequest={event.rawRequest} rawResponse={event.rawResponse} />
 						</div>
-					</div>
+					)}
 				</div>
-			)}
-
-			{/* Raw Response */}
-			<RawSection rawRequest={event.rawRequest} rawResponse={event.rawResponse} />
+			</div>
 		</div>
 	)
 }
+
+// ---------------------------------------------------------------------------
+// Minor event cards
+// ---------------------------------------------------------------------------
 
 function ObservationCard({ event }: { event: ObservationEvent }) {
 	return (
-		<div className="rounded-lg border-l-2 border-l-green-500/50 border bg-muted/40 p-2.5">
-			{/* <div className="text-xs font-semibold text-foreground uppercase tracking-wide mb-2">
-				Observation
-			</div> */}
-			<div className="flex items-start gap-2">
-				<Eye className="size-3.5 text-green-500 shrink-0 mt-0.5" />
-				<span className="text-xs text-muted-foreground">{event.content}</span>
-			</div>
+		<div className="obs" style={{ paddingLeft: 34 }}>
+			<Eye className="size-3.5" />
+			<span>{event.content}</span>
 		</div>
 	)
 }
 
 function RetryCard({ event }: { event: RetryEvent }) {
+	const dots = Array.from({ length: Math.min(event.maxAttempts, 10) }, (_, i) => i < event.attempt)
+
 	return (
-		<div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5">
-			<div className="flex items-start gap-1.5">
-				<RefreshCw className="size-3 text-amber-500 shrink-0 mt-0.5" />
-				<span className="text-xs text-amber-600 dark:text-amber-400">
-					{event.message} ({event.attempt}/{event.maxAttempts})
-				</span>
+		<div style={{ paddingLeft: 34, flex: 'none' }}>
+			<div className="note nw" role="status">
+				<RefreshCw className="size-4" />
+				<div>
+					<b>{event.message}</b>
+					<span className="dots">
+						{dots.map((on, i) => (
+							<i key={i} className={on ? 'on' : ''} />
+						))}
+					</span>
+					<div className="meta" style={{ marginTop: 4 }}>
+						Attempt {event.attempt} of {event.maxAttempts}
+					</div>
+				</div>
 			</div>
 		</div>
 	)
 }
 
 function ErrorCard({ event }: { event: AgentErrorEvent }) {
+	const [showRaw, setShowRaw] = useState(false)
+
 	return (
-		<div className="rounded-lg border border-destructive/30 bg-destructive/10 p-2.5">
-			<div className="flex items-start gap-1.5">
-				<XCircle className="size-3 text-destructive shrink-0 mt-0.5" />
-				<span className="text-xs text-destructive">{event.message}</span>
+		<div style={{ paddingLeft: 0, flex: 'none' }}>
+			<div className="note ne" role="alert">
+				<XCircle className="size-4" />
+				<div style={{ minWidth: 0 }}>
+					<b>{event.message}</b>
+					{event.rawResponse != null && (
+						<div className="row2">
+							<button
+								type="button"
+								className="think"
+								style={{ width: 'auto' }}
+								aria-expanded={showRaw}
+								onClick={() => setShowRaw(!showRaw)}
+							>
+								{showRaw ? 'Hide raw response' : 'Show raw response'}
+							</button>
+						</div>
+					)}
+					{showRaw && event.rawResponse != null && (
+						<CodeBlock label="Raw response" value={event.rawResponse} />
+					)}
+				</div>
 			</div>
-			<RawSection rawResponse={event.rawResponse} />
 		</div>
 	)
 }
 
-// History event card component
-export function EventCard({ event }: { event: HistoricalEvent }) {
-	// Done action - show as result card
-	if (event.type === 'step' && event.action?.name === 'done') {
-		const input = event.action.input as { text?: string; success?: boolean }
-		return (
-			<>
-				<StepCard event={event as AgentStepEvent} />
-				<ResultCard
-					success={input?.success ?? true}
-					text={input?.text || event.action.output || ''}
-				/>
-			</>
-		)
-	}
+/** Live activity pill shown at the bottom of the feed while running. */
+export function ActivityCard({ activity }: { activity: AgentActivity }) {
+	const info = (() => {
+		switch (activity.type) {
+			case 'thinking':
+				return { text: 'Thinking…', icon: <Sparkle className="size-3.5" /> }
+			case 'executing':
+				return {
+					text: (
+						<>
+							Executing <span className="mono">{activity.tool}</span>
+						</>
+					),
+					icon: <RefreshCw className="size-3.5 spin" />,
+				}
+			case 'executed':
+				return {
+					text: (
+						<>
+							Done: <span className="mono">{activity.tool}</span>
+						</>
+					),
+					icon: <Check className="size-3.5" />,
+				}
+			case 'retrying':
+				return {
+					text: `Retrying (${activity.attempt}/${activity.maxAttempts})…`,
+					icon: <RefreshCw className="size-3.5 spin" />,
+				}
+			case 'error':
+				return { text: activity.message, icon: <XCircle className="size-3.5" /> }
+		}
+	})()
 
+	return (
+		<div className="act" role="status">
+			{info.icon}
+			<span>{info.text}</span>
+		</div>
+	)
+}
+
+// ---------------------------------------------------------------------------
+// Dispatcher
+// ---------------------------------------------------------------------------
+
+export function EventCard({
+	event,
+	running,
+	last,
+}: {
+	event: HistoricalEvent
+	running?: boolean
+	last?: boolean
+}) {
 	if (event.type === 'step') {
-		return <StepCard event={event as AgentStepEvent} />
+		if (event.action?.name === 'done') {
+			const input = event.action.input as { text?: string; success?: boolean }
+			return (
+				<Fragment>
+					<StepCard event={event} running={running} last={last} />
+					<ResultCard
+						success={input?.success ?? true}
+						text={input?.text || event.action.output || ''}
+					/>
+				</Fragment>
+			)
+		}
+		return <StepCard event={event} running={running} last={last} />
 	}
 
 	if (event.type === 'observation') {
-		return <ObservationCard event={event as ObservationEvent} />
+		return <ObservationCard event={event} />
 	}
 
 	if (event.type === 'retry') {
-		return <RetryCard event={event as RetryEvent} />
+		return <RetryCard event={event} />
 	}
 
 	if (event.type === 'error') {
-		return <ErrorCard event={event as AgentErrorEvent} />
+		return <ErrorCard event={event} />
 	}
 
+	// 'user_takeover' has no visual of its own yet.
 	return null
-}
-
-// Activity card with animation
-export function ActivityCard({ activity }: { activity: AgentActivity }) {
-	const getActivityInfo = () => {
-		switch (activity.type) {
-			case 'thinking':
-				return { text: 'Thinking...', color: 'text-blue-500' }
-			case 'executing':
-				return { text: `Executing ${activity.tool}...`, color: 'text-amber-500' }
-			case 'executed':
-				return { text: `Done: ${activity.tool}`, color: 'text-green-500' }
-			case 'retrying':
-				return {
-					text: `Retrying (${activity.attempt}/${activity.maxAttempts})...`,
-					color: 'text-amber-500',
-				}
-			case 'error':
-				return { text: activity.message, color: 'text-destructive' }
-		}
-	}
-
-	const info = getActivityInfo()
-
-	return (
-		<div className="flex items-center gap-2 rounded-lg border bg-muted/40 p-2.5 animate-pulse">
-			<div className="relative">
-				<Sparkles className={cn('size-3.5', info.color)} />
-				<span
-					className={cn(
-						'absolute -top-0.5 -right-0.5 size-1.5 rounded-full animate-ping',
-						activity.type === 'thinking'
-							? 'bg-blue-500'
-							: activity.type === 'executing'
-								? 'bg-amber-500'
-								: activity.type === 'retrying'
-									? 'bg-amber-500'
-									: activity.type === 'error'
-										? 'bg-destructive'
-										: 'bg-green-500'
-					)}
-				/>
-			</div>
-			<span className={cn('text-xs', info.color)}>{info.text}</span>
-		</div>
-	)
 }
