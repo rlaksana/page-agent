@@ -94,6 +94,14 @@ export class MultiPageAgent extends PageAgentCore {
 				heartBeatInterval = null
 			}
 
+			// Task finished: release the tab group — it is a run-scoped marker
+			// for agent-opened tabs, not something to leave behind for the user.
+			if (!running) {
+				void tabsController
+					.removeTabGroup()
+					.catch((e) => console.warn('[MultiPageAgent] tab group cleanup failed:', e))
+			}
+
 			chrome.storage.local.set({ isAgentRunning: running }).catch(console.error)
 		})
 	}

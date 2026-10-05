@@ -108,7 +108,6 @@ export class TabsController {
 			}
 			if (this.tabs.find((t) => t.id === this.initialTabId)) {
 				this.currentTabId = this.initialTabId
-				await this.createTabGroup([this.initialTabId])
 			}
 		} else if (includeInitialTab) {
 			const info = await sendMessage({
@@ -127,8 +126,6 @@ export class TabsController {
 					title: info.title,
 					status: info.status,
 				})
-
-				await this.createTabGroup([this.initialTabId])
 			}
 		}
 
@@ -269,6 +266,26 @@ export class TabsController {
 			})
 		} catch (e) {
 			console.warn(PREFIX, 'stale tab group cleanup failed:', e)
+		} finally {
+			await chrome.storage.local.remove(TAB_GROUP_STORAGE_KEY)
+		}
+	}
+
+	/**
+	 * Ungroup this session's tab group, if one exists. Called when a task
+	 * finishes: the group is a run-scoped visual marker for agent-opened
+	 * tabs, not something the user should have to clean up manually.
+	 */
+	async removeTabGroup(): Promise<void> {
+		if (this.tabGroupId == null) return
+		const groupId = this.tabGroupId
+		this.tabGroupId = null
+		try {
+			await sendMessage({
+				type: 'TAB_CONTROL',
+				action: 'ungroup_tab_group',
+				payload: { groupId },
+			})
 		} finally {
 			await chrome.storage.local.remove(TAB_GROUP_STORAGE_KEY)
 		}
