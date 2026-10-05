@@ -19,6 +19,7 @@ Internal packages:
 
 ```bash
 npm start                      # Start website dev server
+npm run dev:ext                # Extension dev mode (wxt watch + auto-reload)
 npm run build                  # Build all packages
 npm run build:libs             # Build all libraries
 npm run build:ext              # Build and zip the extension package
@@ -57,6 +58,7 @@ packages/
 ├── website/                 # @page-agent/website (private)
 ├── llms/                    # @page-agent/llms
 ├── extension/               # Browser extension
+├── mcp/                     # @page-agent/mcp — MCP server (bin: page-agent-mcp)
 ├── page-controller/         # @page-agent/page-controller
 └── ui/                      # @page-agent/ui
 ```
@@ -170,7 +172,7 @@ cd packages/llms && npx vitest      # watch mode in one package
 
 **Sidepanel design system.** The sidepanel views (`App.tsx`, `cards.tsx`, `misc.tsx`, `ConfigPanel.tsx`, `HistoryList/Detail.tsx`) are styled with semantic classes from `src/assets/design.css` (hand-written CSS; tokens bound to `:root` / `:root.dark`; Geist variable fonts in `src/assets/fonts/`) — **not** Tailwind utilities. Tailwind remains only for icon sizing (`size-3.5` etc.) and the hub entry, which keeps shadcn/ui. `misc.tsx` exports `Logo`/`StatusDot`/`MotionOverlay` still used by the hub — do not remove them. `main.tsx` must import `design.css` _after_ `index.css` so its element-level resets win over Tailwind preflight.
 
-**Sidepanel Lifecycle & Tab Group Cleanup.** In Chrome MV3, closing the sidepanel via the `X` button does not destroy the document; it flips `document.visibilityState` to `hidden`. React does not unmount, so `useEffect` cleanup and `TabsController.dispose()` are unreliable during close. Reliable cleanup must trigger via `visibilitychange` (when `visibilityState === 'visible'`) and on App mount. Tab group cleanup uses `chrome.tabs.ungroup(tabIds)` (empty groups auto-delete in Chrome) because `@types/chrome` does not expose `chrome.tabGroups.remove()`.
+**Sidepanel Lifecycle & Tab Group Cleanup.** In Chrome MV3, closing the sidepanel via the `X` button does not destroy the document; it flips `document.visibilityState` to `hidden`. React does not unmount, so `useEffect` cleanup and `TabsController.dispose()` are unreliable during close. Reliable cleanup must trigger via `visibilitychange` (when `visibilityState === 'visible'`) and on App mount. Tab group cleanup uses `chrome.tabs.ungroup(tabIds)` (empty groups auto-delete in Chrome) because `@types/chrome` does not expose `chrome.tabGroups.remove()`. Tab groups are run-scoped: created lazily when the agent opens its first new tab (the user's initial tab is never grouped), and released via `TabsController.removeTabGroup()` when the status leaves `running`.
 
 ## Code Standards
 
