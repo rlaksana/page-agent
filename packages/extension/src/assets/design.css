@@ -294,7 +294,8 @@ a {
 .feed {
 	flex: 1;
 	min-height: 0;
-	overflow: hidden;
+	/* x hidden, y scrollable: `hidden` alone also blocks wheel/scrollbar-free user scrolling */
+	overflow: hidden auto;
 	padding: 16px 14px 10px;
 	display: flex;
 	flex-direction: column;
