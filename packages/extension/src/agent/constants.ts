@@ -45,6 +45,5 @@ export function migrateMaxRetries(config: LLMConfig): LLMConfig {
 		return config
 	}
 	const { maxRetries: _drop, ...rest } = config
-	void _drop
 	return rest as LLMConfig
 }

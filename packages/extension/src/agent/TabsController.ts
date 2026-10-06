@@ -442,8 +442,6 @@ export class TabsController {
 	dispose() {
 		debug('dispose')
 		this.disposed = true
-		this.port?.disconnect()
-		this.port = undefined
 
 		// Best-effort cleanup of the tab group we created for this session.
 		// The sidepanel's JS context is going away, so we don't await —
