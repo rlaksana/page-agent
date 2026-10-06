@@ -72,6 +72,17 @@ Same format — add the config to the MCP settings of your client.
 3. Launcher page triggers the extension to open a **hub tab** (`hub.html?ws=PORT`).
 4. Hub connects to the WS server. MCP tools now proxy tasks to the hub.
 
+### Multiple clients / terminals
+
+Every MCP client spawns its own server process. The first process to start owns
+the hub port; additional processes detect this and transparently proxy their
+tool calls to the owner over HTTP instead of failing. If the owner exits, the
+next process to run a tool takes over the port and re-opens the launcher page.
+All of this is automatic — no per-client configuration needed.
+
+The browser still runs one task at a time: a second concurrent `execute_task`
+returns `Agent is already running a task.`
+
 The hub tab speaks a generic WebSocket protocol (defined in `hub-ws.ts` in the extension package) and has no knowledge of MCP. See the hub's protocol docs for message format details.
 
 ## Architecture

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
-import { exec } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { platform } from 'node:os'
 import * as z from 'zod/v4'
@@ -21,14 +21,25 @@ if (env.LLM_API_KEY) llmConfig.apiKey = env.LLM_API_KEY
 // --- Hub bridge (HTTP + WebSocket) ---
 
 const hub = new HubBridge(port)
-await hub.start()
+const isOwner = await hub.start()
 
-// Open launcher in default browser
-const url = `http://localhost:${port}`
-const cmd = platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'start ""' : 'xdg-open'
-exec(`${cmd} "${url}"`, (err) => {
-	if (err) console.error(`[page-agent-mcp] Could not open browser: ${err.message}`)
-})
+// Open launcher in default browser (owner only — standbys proxy to the owner;
+// on takeover the bridge calls this again to bring the hub tab back)
+const openLauncher = () => {
+	const url = `http://localhost:${port}`
+	/** @type {[string, string[]]} */ // prettier-ignore
+	const [file, args] =
+		platform() === 'darwin'
+			? ['open', [url]]
+			: platform() === 'win32'
+				? ['cmd', ['/c', 'start', '', url]]
+				: ['xdg-open', [url]]
+	execFile(file, args, (err) => {
+		if (err) console.error(`[page-agent-mcp] Could not open browser: ${err.message}`)
+	})
+}
+hub.onTakeover = openLauncher
+if (isOwner) openLauncher()
 
 // --- MCP server (stdio) ---
 
@@ -78,7 +89,7 @@ mcpServer.registerTool(
 		content: [
 			{
 				type: 'text',
-				text: JSON.stringify({ connected: hub.connected, busy: hub.busy }, null, 2),
+				text: JSON.stringify(await hub.getStatus(), null, 2),
 			},
 		],
 	})
