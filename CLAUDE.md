@@ -58,7 +58,7 @@ packages/
 ├── website/                 # @page-agent/website (private)
 ├── llms/                    # @page-agent/llms
 ├── extension/               # Browser extension
-├── mcp/                     # @page-agent/mcp — MCP server (bin: page-agent-mcp)
+├── mcp/                     # @page-agent/mcp — MCP server (bin: page-agent-mcp). One stdio process per client: first to bind the hub port is owner, others proxy to it
 ├── page-controller/         # @page-agent/page-controller
 └── ui/                      # @page-agent/ui
 ```
@@ -149,7 +149,7 @@ const pageInfo = await this.pageController.getPageInfo()
 
 - **Framework**: Vitest (unit tests only for now; future E2E goes to `packages/e2e/` with Playwright)
 - **Location**: co-located, `src/foo.test.ts` next to `src/foo.ts`
-- **Coverage**: `packages/llms` (full suite) and `packages/extension` (`vitest.config.ts` scaffold + `constants.test.ts` for the `migrateMaxRetries` helper). Other packages will follow incrementally.
+- **Coverage**: `packages/llms` (full suite), `packages/extension` (`constants.test.ts`, `TabsController.test.ts`), `packages/core`, `packages/page-controller`, `packages/ui`, and `packages/mcp` (JS, hub-bridge integration tests). Other gaps fill in incrementally.
 - **Adding tests to a new package**: create `vitest.config.ts` in the package and add a `"test": "vitest run"` script. Root `npm test` and `node scripts/ci.js` pick it up through npm workspaces.
 - **Template**: See @page-agent/llms
 
