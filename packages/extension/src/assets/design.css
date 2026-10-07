@@ -119,6 +119,14 @@ a {
 	background: var(--sunken);
 	color: var(--text);
 }
+.ib:disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+.ib:disabled:hover {
+	background: none;
+	color: var(--text-2);
+}
 .ib.ok {
 	color: var(--ok);
 }
@@ -268,6 +276,20 @@ a {
 	-webkit-line-clamp: 2;
 	-webkit-box-orient: vertical;
 	overflow: hidden;
+	/* button reset — the task text doubles as the expand/collapse toggle */
+	appearance: none;
+	border: 0;
+	background: none;
+	padding: 0;
+	width: 100%;
+	text-align: left;
+	color: inherit;
+}
+.task .tt.tog {
+	cursor: pointer;
+}
+.task .tt.open {
+	-webkit-line-clamp: unset;
 }
 .meta {
 	font:
@@ -699,6 +721,9 @@ a {
 	outline: 0;
 	resize: none;
 	background: transparent;
+	overflow-y: auto;
+	/* thin scrollbar without the stacked up/down arrow buttons */
+	scrollbar-width: thin;
 	color: var(--text);
 	font:
 		400 13.5px/1.5 'Geist',
@@ -719,6 +744,13 @@ a {
 	align-items: center;
 	gap: 8px;
 	margin-top: 6px;
+}
+.cr .kbd {
+	/* shrink with an ellipsis instead of clipping raw behind the send button */
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 .chip {
 	display: inline-flex;

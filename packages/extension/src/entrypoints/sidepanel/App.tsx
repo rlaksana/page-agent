@@ -1,5 +1,15 @@
 import type { HistoricalEvent } from '@page-agent/core'
-import { ArrowUp, Copy, Download, History, Pencil, RotateCcw, Settings, Square } from 'lucide-react'
+import {
+	ArrowUp,
+	Copy,
+	Download,
+	History,
+	Pencil,
+	Plus,
+	RotateCcw,
+	Settings,
+	Square,
+} from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { ConfigPanel } from '@/components/ConfigPanel'
@@ -25,7 +35,8 @@ export default function App() {
 	const historyRef = useRef<HTMLDivElement>(null)
 	const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-	const { status, history, activity, currentTask, config, execute, stop, configure } = useAgent()
+	const { status, history, activity, currentTask, config, execute, stop, startNewChat, configure } =
+		useAgent()
 	const isRunning = status === 'running'
 
 	// Persist session when task finishes
@@ -59,6 +70,33 @@ export default function App() {
 		if (view.name !== 'chat' || isRunning) return
 		textareaRef.current?.focus({ preventScroll: true })
 	}, [isRunning, view.name])
+
+	// Auto-grow the composer with its content up to a cap; it scrolls
+	// internally (thin scrollbar) beyond that instead of cramming a tiny box.
+	const COMPOSER_MAX_HEIGHT = 160
+	useEffect(() => {
+		const el = textareaRef.current
+		if (!el) return
+		el.style.height = 'auto'
+		el.style.height = `${Math.min(el.scrollHeight, COMPOSER_MAX_HEIGHT)}px`
+	}, [inputValue])
+
+	// Task banner text is clamped to 2 lines; click toggles expand/collapse.
+	// Expansion is keyed by task text, so a new task starts collapsed
+	// automatically without a reset effect.
+	const [expandedTask, setExpandedTask] = useState<string | null>(null)
+	const [taskClamped, setTaskClamped] = useState(false)
+	const taskExpanded = expandedTask === currentTask
+	const taskTextRef = useRef<HTMLButtonElement>(null)
+
+	// Detect truncation while collapsed so the toggle only shows when needed.
+	// Skip while expanded: scrollHeight == clientHeight then, which would
+	// clear the flag and remove the collapse affordance.
+	useEffect(() => {
+		if (taskExpanded) return
+		const el = taskTextRef.current
+		setTaskClamped(!!el && el.scrollHeight > el.clientHeight + 1)
+	}, [currentTask, taskExpanded])
 
 	// Sweep any tab group left over from a previous session.
 	//
@@ -105,6 +143,13 @@ export default function App() {
 	const handleStop = useCallback(() => {
 		stop()
 	}, [stop])
+
+	const handleNewChat = useCallback(() => {
+		if (isRunning) return
+		startNewChat()
+		setView({ name: 'chat' })
+		textareaRef.current?.focus({ preventScroll: true })
+	}, [isRunning, startNewChat])
 
 	const handleKeyDown = (e: React.KeyboardEvent) => {
 		if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -224,6 +269,16 @@ export default function App() {
 				<button
 					type="button"
 					className="ib"
+					onClick={handleNewChat}
+					disabled={isRunning}
+					aria-label="New chat"
+					title="New chat"
+				>
+					<Plus className="size-4" />
+				</button>
+				<button
+					type="button"
+					className="ib"
 					onClick={() => setView({ name: 'history' })}
 					aria-label="History"
 					title="History"
@@ -252,9 +307,18 @@ export default function App() {
 						</span>
 						<CopyIconButton text={currentTask} label="Copy task" />
 					</div>
-					<p className="tt" title={currentTask}>
+					<button
+						type="button"
+						ref={taskTextRef}
+						className={cn('tt', taskClamped && 'tog', taskExpanded && 'open')}
+						onClick={
+							taskClamped ? () => setExpandedTask(taskExpanded ? null : currentTask) : undefined
+						}
+						aria-expanded={taskExpanded}
+						title={currentTask}
+					>
 						{currentTask}
-					</p>
+					</button>
 					<div className="prog">
 						<i style={{ width: `${progress}%` }} />
 					</div>

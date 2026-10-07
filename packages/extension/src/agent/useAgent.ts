@@ -37,6 +37,7 @@ export interface UseAgentResult {
 	config: ExtConfig | null
 	execute: (task: string) => Promise<ExecutionResult>
 	stop: () => void
+	startNewChat: () => void
 	configure: (config: ExtConfig) => Promise<void>
 }
 
@@ -143,6 +144,17 @@ export function useAgent(): UseAgentResult {
 		agentRef.current?.stop()
 	}, [])
 
+	/**
+	 * Clear the current chat: reset the view and drop the agent's
+	 * cross-task conversation context.
+	 */
+	const startNewChat = useCallback(() => {
+		setCurrentTask('')
+		setHistory([])
+		setActivity(null)
+		agentRef.current?.startNewChat()
+	}, [])
+
 	const configure = useCallback(
 		async ({
 			language,
@@ -182,6 +194,7 @@ export function useAgent(): UseAgentResult {
 		config,
 		execute,
 		stop,
+		startNewChat,
 		configure,
 	}
 }
