@@ -79,8 +79,9 @@ export default function App() {
 	}, [isRunning, view.name])
 
 	// Auto-grow the composer with its content up to a cap; it scrolls
-	// internally (thin scrollbar) beyond that instead of cramming a tiny box.
-	const COMPOSER_MAX_HEIGHT = 160
+	// internally (thin scrollbar, reserved gutter) beyond that instead of
+	// cramming a tiny box.
+	const COMPOSER_MAX_HEIGHT = 240
 	useEffect(() => {
 		const el = textareaRef.current
 		if (!el) return

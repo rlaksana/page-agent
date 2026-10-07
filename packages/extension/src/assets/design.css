@@ -717,6 +717,11 @@ a {
 .ta2 {
 	display: block;
 	width: 100%;
+	/* Grow with content up to a cap instead of scrolling from line 3
+	   (Chrome 123+; the composer's inline height from JS takes precedence). */
+	field-sizing: content;
+	min-height: 42px;
+	max-height: 240px;
 	border: 0;
 	outline: 0;
 	resize: none;
@@ -724,6 +729,8 @@ a {
 	overflow-y: auto;
 	/* thin scrollbar without the stacked up/down arrow buttons */
 	scrollbar-width: thin;
+	/* reserve the gutter so long text never sits under the scrollbar */
+	scrollbar-gutter: stable;
 	color: var(--text);
 	font:
 		400 13.5px/1.5 'Geist',
@@ -1110,6 +1117,15 @@ a {
 .tx {
 	width: 100%;
 	min-height: 76px;
+	/* Grow with the content (thousands of words welcome) up to a cap, then
+	   scroll internally. `field-sizing` is Chrome 123+; older browsers keep
+	   the fixed box and just scroll. */
+	field-sizing: content;
+	max-height: 240px;
+	overflow-y: auto;
+	scrollbar-width: thin;
+	/* reserve the gutter so text never sits under the scrollbar */
+	scrollbar-gutter: stable;
 	border: 1px solid var(--line-strong);
 	border-radius: 9px;
 	background: var(--bg);
