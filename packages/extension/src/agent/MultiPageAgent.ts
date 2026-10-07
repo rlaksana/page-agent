@@ -2,6 +2,7 @@ import { type AgentConfig, PageAgentCore } from '@page-agent/core'
 
 import { RemotePageController } from './RemotePageController'
 import { TabsController } from './TabsController'
+import { configureSiteGuard } from './guards'
 import SYSTEM_PROMPT from './system_prompt.md?raw'
 import { createTabTools } from './tabTools'
 
@@ -14,6 +15,10 @@ function detectLanguage(): 'en-US' | 'zh-CN' {
 interface MultiPageAgentConfig extends AgentConfig {
 	includeInitialTab?: boolean
 	experimentalIncludeAllTabs?: boolean
+	/** Hosts the agent must never read or operate on */
+	blockedSites?: string[]
+	/** Ask the user before clicking elements whose text matches sensitive keywords */
+	confirmSensitiveActions?: boolean
 }
 
 /**
@@ -22,11 +27,21 @@ interface MultiPageAgentConfig extends AgentConfig {
  * - can be used from a side panel or a content script
  */
 export class MultiPageAgent extends PageAgentCore {
+	/**
+	 * Forwarded to the page controller: when set, sensitive clicks ask the
+	 * user through this callback. Assigned by the embedding UI (e.g. useAgent).
+	 */
+	declare onConfirmAction: ((description: string) => Promise<boolean>) | undefined
+
 	constructor(config: MultiPageAgentConfig) {
 		// multi page controller
 		const tabsController = new TabsController()
 		const pageController = new RemotePageController(tabsController)
 		const customTools = createTabTools(tabsController)
+
+		// guard rails: site denylist + sensitive-action confirmation
+		configureSiteGuard(config.blockedSites)
+		pageController.confirmSensitiveActions = config.confirmSensitiveActions ?? false
 
 		// system prompt - auto-detect language if not specified
 		const language = config.language ?? detectLanguage()
@@ -79,6 +94,16 @@ export class MultiPageAgent extends PageAgentCore {
 				chrome.storage.local.set({ isAgentRunning: false }).catch(console.error)
 
 				tabsController.dispose()
+			},
+		})
+
+		// Forward the confirmation callback: the embedding UI assigns it on the
+		// agent after construction, and the page controller reads it on click.
+		Object.defineProperty(this, 'onConfirmAction', {
+			configurable: true,
+			get: () => pageController.onConfirmAction,
+			set: (fn) => {
+				pageController.onConfirmAction = fn
 			},
 		})
 

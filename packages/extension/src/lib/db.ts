@@ -34,6 +34,9 @@ function getDB() {
 	return dbPromise
 }
 
+/** Keep the newest N sessions; older ones are trimmed on save. */
+const MAX_SESSIONS = 200
+
 export async function saveSession(
 	session: Omit<SessionRecord, 'id' | 'createdAt'>
 ): Promise<SessionRecord> {
@@ -44,6 +47,14 @@ export async function saveSession(
 		createdAt: Date.now(),
 	}
 	await db.put('sessions', record)
+
+	// Index keys come back ascending by createdAt, so the overflow prefix is the oldest.
+	const keys = await db.getAllKeysFromIndex('sessions', 'by-created')
+	if (keys.length > MAX_SESSIONS) {
+		await Promise.all(
+			keys.slice(0, keys.length - MAX_SESSIONS).map((key) => db.delete('sessions', key))
+		)
+	}
 	return record
 }
 

@@ -22,14 +22,40 @@ export function initPageController() {
 			return null
 		})
 
-	function getPC(): PageController {
-		if (!pageController) {
-			pageController = new PageController({
-				enableMask: false,
-				viewportExpansion: 400,
+	/**
+	 * Full-page DOM extraction by default (matches the @page-agent/page-controller
+	 * default). The stored advanced config can narrow it for token economy:
+	 * 0 = viewport only, N = viewport expanded by N px.
+	 */
+	const DEFAULT_VIEWPORT_EXPANSION = -1
+
+	let pcPromise: Promise<PageController> | null = null
+
+	function getPC(): Promise<PageController> {
+		if (!pcPromise) {
+			pcPromise = (async () => {
+				const result = await chrome.storage.local.get('advancedConfig')
+				const advancedConfig = (result.advancedConfig ?? {}) as { viewportExpansion?: number }
+				const viewportExpansion =
+					typeof advancedConfig.viewportExpansion === 'number'
+						? advancedConfig.viewportExpansion
+						: DEFAULT_VIEWPORT_EXPANSION
+				return new PageController({ enableMask: false, viewportExpansion })
+			})()
+			// Allow a retry after a failed init (e.g. transient storage error).
+			pcPromise.catch(() => {
+				pcPromise = null
 			})
 		}
-		return pageController
+		return pcPromise
+	}
+
+	function resetPC() {
+		if (pageController) {
+			pageController.dispose()
+			pageController = null
+		}
+		pcPromise = null
 	}
 
 	intervalID = window.setInterval(() => {
@@ -57,13 +83,21 @@ export function initPageController() {
 				if (!chrome.runtime?.id) return
 				const currentTabId = (await chrome.storage.local.get('currentTabId')).currentTabId
 				if (!chrome.runtime?.id) return
+				// The agent is waiting for the user (ask_user / confirmation): release the
+				// mask so the user can interact with the page (e.g. solve a captcha).
+				const agentAwaitingUser = (await chrome.storage.local.get('agentAwaitingUser'))
+					.agentAwaitingUser
+				if (!chrome.runtime?.id) return
 
 				const shouldShowMask =
-					isAgentRunning && agentInTouch && currentTabId === (await myTabIdPromise)
+					isAgentRunning &&
+					!agentAwaitingUser &&
+					agentInTouch &&
+					currentTabId === (await myTabIdPromise)
 				if (!chrome.runtime?.id) return
 
 				if (shouldShowMask) {
-					const pc = getPC()
+					const pc = await getPC()
 					pc.initMask()
 					await pc.showMask()
 				} else {
@@ -75,10 +109,7 @@ export function initPageController() {
 				}
 
 				if (!isAgentRunning && agentInTouch) {
-					if (pageController) {
-						pageController.dispose()
-						pageController = null
-					}
+					resetPC()
 				}
 			} catch (err) {
 				// Swallow context-invalidation specifically — that's the loop's
@@ -103,8 +134,6 @@ export function initPageController() {
 		const { action, payload } = message
 		const methodName = getMethodName(action)
 
-		const pc = getPC() as any
-
 		switch (action) {
 			case 'get_last_update_time':
 			case 'get_browser_state':
@@ -115,15 +144,21 @@ export function initPageController() {
 			case 'select_option':
 			case 'scroll':
 			case 'scroll_horizontally':
+			case 'press_key':
+			case 'get_page_text':
+			case 'get_element_text':
 			case 'execute_javascript':
-				pc[methodName](...(payload || []))
-					.then((result: any) => sendResponse(result))
-					.catch((error: any) =>
+				;(async () => {
+					try {
+						const pc = (await getPC()) as any
+						sendResponse(await pc[methodName](...(payload || [])))
+					} catch (error: any) {
 						sendResponse({
 							success: false,
 							error: error instanceof Error ? error.message : String(error),
 						})
-					)
+					}
+				})()
 				break
 
 			default:
@@ -160,6 +195,12 @@ function getMethodName(action: string): string {
 			return 'scroll' as const
 		case 'scroll_horizontally':
 			return 'scrollHorizontally' as const
+		case 'press_key':
+			return 'pressKey' as const
+		case 'get_page_text':
+			return 'getPageText' as const
+		case 'get_element_text':
+			return 'getElementText' as const
 		case 'execute_javascript':
 			return 'executeJavascript' as const
 

@@ -1,6 +1,7 @@
 import type { BrowserState } from '@page-agent/page-controller'
 
 import type { TabsController } from './TabsController'
+import { isSensitiveActionText, isUrlDenied } from './guards'
 
 const PREFIX = '[RemotePageController]'
 
@@ -25,6 +26,16 @@ function sendMessage(message: {
  */
 export class RemotePageController {
 	tabsController: TabsController
+
+	/**
+	 * When true, clicking an element whose text matches a sensitive keyword
+	 * (see guards.SENSITIVE_ACTION_KEYWORDS) requires `onConfirmAction` to
+	 * resolve true before the click is sent to the page.
+	 */
+	confirmSensitiveActions = false
+
+	/** Asked when a sensitive action needs explicit user approval. */
+	onConfirmAction?: (description: string) => Promise<boolean>
 
 	constructor(tabsController: TabsController) {
 		this.tabsController = tabsController
@@ -63,6 +74,12 @@ export class RemotePageController {
 		const currentTitle = await this.getCurrentTitle()
 
 		if (!this.currentTabId || !isContentScriptAllowed(currentUrl)) {
+			if (isUrlDenied(currentUrl)) {
+				throw new Error(
+					`This site (${currentUrl}) is on the blocked list in the extension settings. ` +
+						'The agent cannot read or operate on it.'
+				)
+			}
 			browserState = {
 				url: currentUrl,
 				title: currentTitle,
@@ -79,10 +96,12 @@ export class RemotePageController {
 			if (!res || res.success === false) {
 				// Common cause: the tab predates the last extension (re)load —
 				// Chrome does not re-inject content scripts into already-open tabs.
-				// Fail loudly instead of feeding the LLM a broken/empty state.
+				// Fail loudly instead of feeding the LLM a broken/empty state, and
+				// point at the reload_page action so the agent can recover itself.
 				throw new Error(
 					`Cannot read the page (${res?.error ?? 'no response from content script'}). ` +
-						'Reload the tab and run the task again.'
+						'Use the reload_page action to reload the tab, then retry. ' +
+						'If it still fails, ask the user to reload the tab manually.'
 				)
 			}
 			browserState = res
@@ -121,6 +140,30 @@ export class RemotePageController {
 	}
 
 	async clickElement(...args: any[]): Promise<DomActionReturn> {
+		// Sensitive-action confirmation: inspect what we are about to click and
+		// ask the user when it matches a sensitive keyword (e.g. payment, delete).
+		const index = args[0]
+		if (
+			this.confirmSensitiveActions &&
+			typeof index === 'number' &&
+			this.onConfirmAction &&
+			isContentScriptAllowed(await this.getCurrentUrl())
+		) {
+			const info = await this.getElementText(index)
+			if (info?.success && typeof info.text === 'string' && isSensitiveActionText(info.text)) {
+				const allowed = await this.onConfirmAction(
+					`The agent wants to click "${info.text}". Allow this action?`
+				)
+				if (!allowed) {
+					return {
+						success: false,
+						message:
+							'❌ The user declined this action. Choose a different approach, or finish the task with done.',
+					}
+				}
+			}
+		}
+
 		const res = await this.remoteCallDomAction('click_element', args)
 		// @note may cause page navigation, wait for 1 second to ensure the page loading started
 		await new Promise((resolve) => setTimeout(resolve, 1000))
@@ -143,6 +186,25 @@ export class RemotePageController {
 		return this.remoteCallDomAction('scroll_horizontally', args)
 	}
 
+	async pressKey(...args: any[]): Promise<DomActionReturn> {
+		return this.remoteCallDomAction('press_key', args)
+	}
+
+	async getPageText(): Promise<{ success: boolean; text?: string; error?: string }> {
+		if (!this.currentTabId || !isContentScriptAllowed(await this.getCurrentUrl())) {
+			return { success: false, error: 'Page is not readable.' }
+		}
+		return sendMessage({
+			type: 'PAGE_CONTROL',
+			action: 'get_page_text',
+			targetTabId: this.currentTabId,
+		})
+	}
+
+	async getElementText(...args: any[]): Promise<DomActionReturn & { text?: string }> {
+		return this.remoteCallDomAction('get_element_text', args)
+	}
+
 	// `execute_javascript` is intentionally not implemented: AbortSignal cannot cross context
 
 	/** @note Managed by content script via storage polling. */
@@ -157,7 +219,15 @@ export class RemotePageController {
 			return { success: false, message: 'RemotePageController not initialized.' }
 		}
 
-		if (!isContentScriptAllowed(await this.getCurrentUrl())) {
+		const url = await this.getCurrentUrl()
+		if (isUrlDenied(url)) {
+			return {
+				success: false,
+				message: `Operation not allowed: ${url} is on the blocked list in the extension settings.`,
+			}
+		}
+
+		if (!isContentScriptAllowed(url)) {
 			return {
 				success: false,
 				message:
