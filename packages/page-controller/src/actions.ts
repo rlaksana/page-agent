@@ -229,6 +229,57 @@ export async function inputTextElement(element: HTMLElement, text: string) {
 	await waitFor(0.1)
 }
 
+/** Common key → keyCode mapping for synthetic KeyboardEvents. */
+const KEY_CODES: Record<string, number> = {
+	Enter: 13,
+	Escape: 27,
+	Tab: 9,
+	Space: 32,
+	Backspace: 8,
+	Delete: 46,
+	ArrowUp: 38,
+	ArrowDown: 40,
+	ArrowLeft: 37,
+	ArrowRight: 39,
+	Home: 36,
+	End: 35,
+	PageUp: 33,
+	PageDown: 34,
+}
+
+/**
+ * Dispatch a keydown → keypress → keyup sequence on the currently focused
+ * element. Synthetic keyboard events carry no default action, so `Enter`
+ * additionally submits the enclosing form via `requestSubmit()` (skipped in
+ * textareas, where Enter means a newline).
+ * @private Internal method, subject to change at any time.
+ */
+export async function pressKeyElement(key: string) {
+	const target =
+		document.activeElement instanceof HTMLElement ? document.activeElement : document.body
+	const keyCode = KEY_CODES[key] ?? 0
+	const eventInit: KeyboardEventInit = {
+		key,
+		code: key,
+		keyCode,
+		which: keyCode,
+		bubbles: true,
+		cancelable: true,
+	}
+	target.dispatchEvent(new KeyboardEvent('keydown', eventInit))
+	if (key.length === 1) target.dispatchEvent(new KeyboardEvent('keypress', eventInit))
+	target.dispatchEvent(new KeyboardEvent('keyup', eventInit))
+
+	if (key === 'Enter' && !(target instanceof HTMLTextAreaElement)) {
+		const form = target.closest('form')
+		// ponytail: no dedicated submit-button fallback; if requestSubmit is
+		// blocked, the agent can click_element the submit button instead.
+		if (form) form.requestSubmit()
+	}
+
+	await waitFor(0.1)
+}
+
 /**
  * @todo browser-use version is very complex and supports menu tags, need to follow up
  * @private Internal method, subject to change at any time.

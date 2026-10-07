@@ -10,6 +10,7 @@ import {
 	clickElement,
 	getElementByIndex,
 	inputTextElement,
+	pressKeyElement,
 	scrollHorizontally,
 	scrollVertically,
 	selectOptionElement,
@@ -394,6 +395,57 @@ export class PageController extends EventTarget {
 				success: false,
 				message: `❌ Error executing JavaScript: ${error}`,
 			}
+		}
+	}
+
+	/**
+	 * Press a keyboard key on the currently focused element.
+	 * Enter also submits the enclosing form (except in textareas).
+	 */
+	async pressKey(key: string): Promise<ActionResult> {
+		try {
+			await pressKeyElement(key)
+			return { success: true, message: `✅ Pressed key ${key}.` }
+		} catch (error) {
+			return { success: false, message: `❌ Failed to press key: ${error}` }
+		}
+	}
+
+	/**
+	 * Full visible text of the page (not just the viewport), capped at
+	 * `maxLength` characters. For reading / extraction tasks.
+	 */
+	async getPageText(maxLength = 20_000): Promise<{ success: boolean; text: string }> {
+		const text = (document.body?.innerText || '').trim()
+		if (!text) {
+			return { success: false, text: '' }
+		}
+		return {
+			success: true,
+			text:
+				text.length > maxLength
+					? `${text.slice(0, maxLength)}\n\n[Truncated at ${maxLength} characters]`
+					: text,
+		}
+	}
+
+	/**
+	 * Text description of an indexed element — used by callers that need to
+	 * inspect what they are about to act on (e.g. sensitive-action confirmation).
+	 */
+	async getElementText(index: number): Promise<{ success: boolean; text: string }> {
+		try {
+			this.assertIndexed()
+			const element = getElementByIndex(this.selectorMap, index)
+			const described = this.elementTextMap.get(index)
+			const text =
+				described ||
+				element.getAttribute('aria-label') ||
+				element.textContent?.trim().slice(0, 120) ||
+				element.tagName
+			return { success: true, text }
+		} catch (error) {
+			return { success: false, text: String(error) }
 		}
 	}
 

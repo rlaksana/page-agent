@@ -197,6 +197,38 @@ tools.set(
 	})
 )
 
-// @todo send_keys
+tools.set(
+	'press_key',
+	tool({
+		description:
+			'Press a keyboard key on the currently focused element. Examples: "Enter", "Escape", "Tab", "ArrowDown", "PageDown". ' +
+			'Use after input_text when a field needs Enter, or to close dialogs. Note: Enter submits the enclosing form (except in textareas).',
+		inputSchema: z.object({
+			key: z.string().min(1).describe('Key name, e.g. "Enter", "Escape", "Tab", "ArrowDown"'),
+		}),
+		execute: async function (this: PageAgentCore, input) {
+			const result = await this.pageController.pressKey(input.key)
+			return result.message
+		},
+	})
+)
+
+tools.set(
+	'extract_content',
+	tool({
+		description:
+			'Extract the full visible text content of the current page (not just the viewport). ' +
+			'Use for reading, summarizing, or collecting data that spans beyond the visible area, instead of scrolling repeatedly.',
+		inputSchema: z.object({}),
+		execute: async function (this: PageAgentCore) {
+			const result = await this.pageController.getPageText()
+			if (!result.success) {
+				return '❌ Failed to extract page text: the page has no readable text content.'
+			}
+			return `✅ Extracted page text:\n${result.text}`
+		},
+	})
+)
+
 // @todo upload_file
 // @todo extract_structured_data
