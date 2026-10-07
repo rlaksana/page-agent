@@ -111,7 +111,7 @@ export class PageAgentCore extends EventTarget {
 	constructor(config: PageAgentCoreConfig) {
 		super()
 
-		this.config = { ...config, maxSteps: config.maxSteps ?? 40 }
+		this.config = { ...config, maxSteps: Math.max(1, config.maxSteps ?? 40) }
 
 		this.#llm = new LLM(this.config)
 		this.tools = new Map(tools)
@@ -358,8 +358,16 @@ export class PageAgentCore extends EventTarget {
 				}
 
 				step++
-				if (step > maxSteps) {
-					const message = 'Step count exceeded maximum limit'
+				// `>=` (not `>`): maxSteps counts the steps actually run, so the
+				// budget allows exactly maxSteps LLM steps.
+				if (step >= maxSteps) {
+					// Surface what the agent gathered so far: its own last memory is
+					// often most of the answer — a bare "exceeded limit" throws that
+					// away.
+					const lastMemory = [...this.history].reverse().find((e) => e.type === 'step')
+						?.reflection?.memory
+					const message =
+						'Step count exceeded maximum limit.' + (lastMemory ? ` Last state: ${lastMemory}` : '')
 					console.error(message)
 					this.#emitActivity({ type: 'error', message: message })
 					this.#emitHistoryChange({ type: 'error', message: message })
@@ -633,13 +641,22 @@ export class PageAgentCore extends EventTarget {
 		// history if follow-ups measurably miss earlier details.
 
 		if (this.#conversation.length > 0) {
+			// Cap cross-task context: a huge result (e.g. a 200KB extraction)
+			// must not ride along in every following step's prompt and overflow
+			// the context window (or quietly multiply input-token cost).
+			const MAX_TURNS = 6
+			const MAX_TURN_CHARS = 2_000
 			prompt += '<previous_conversation>\n'
 			prompt +=
-				'Earlier requests in this conversation and your final results (oldest first). The current request may refer to them.\n'
-			this.#conversation.forEach((turn, i) => {
+				'Earlier requests in this conversation and your final results (oldest first, long results truncated). The current request may refer to them.\n'
+			this.#conversation.slice(-MAX_TURNS).forEach((turn, i) => {
+				const result =
+					turn.result.length > MAX_TURN_CHARS
+						? `${turn.result.slice(0, MAX_TURN_CHARS)}…[truncated]`
+						: turn.result
 				prompt += `<turn_${i + 1}>\n`
 				prompt += `User request: ${turn.task}\n`
-				prompt += `Your result: ${turn.success ? '' : '[not completed] '}${turn.result}\n`
+				prompt += `Your result: ${turn.success ? '' : '[not completed] '}${result}\n`
 				prompt += `</turn_${i + 1}>\n`
 			})
 			prompt += '</previous_conversation>\n\n'
