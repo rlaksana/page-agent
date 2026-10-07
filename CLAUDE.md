@@ -174,6 +174,10 @@ cd packages/llms && npx vitest      # watch mode in one package
 
 **Sidepanel Lifecycle & Tab Group Cleanup.** In Chrome MV3, closing the sidepanel via the `X` button does not destroy the document; it flips `document.visibilityState` to `hidden`. React does not unmount, so `useEffect` cleanup and `TabsController.dispose()` are unreliable during close. Reliable cleanup must trigger via `visibilitychange` (when `visibilityState === 'visible'`) and on App mount. Tab group cleanup uses `chrome.tabs.ungroup(tabIds)` (empty groups auto-delete in Chrome) because `@types/chrome` does not expose `chrome.tabGroups.remove()`. Tab groups are run-scoped: created lazily when the agent opens its first new tab (the user's initial tab is never grouped), and released via `TabsController.removeTabGroup()` when the status leaves `running`.
 
+**Extension IPC routing.** Background runtime messages route by type: `TAB_CONTROL` → `handleTabControlMessage` (`TabsController.background.ts`), `PAGE_CONTROL` → `handlePageControlMessage` (`RemotePageController.background.ts`, forwarded to the content script of `message.targetTabId`). The last hop (`chrome.tabs.sendMessage`) fails with "Could not establish connection. Receiving end does not exist" when the target tab predates the last extension (re)load — Chrome does not re-inject content scripts into already-open tabs. `getBrowserState` turns that failure into an actionable "Reload the tab" error instead of feeding the LLM a broken state; keep that failure loud.
+
+**Cross-task conversation context.** `PageAgentCore` keeps finished turns (`#conversation`: task + final result) and injects them into prompts as `<previous_conversation>`, so follow-up tasks in the same chat carry prior context; `startNewChat()` clears it (sidepanel: the `+` New chat button). `execute()` still resets `history` per task — only the conversation turns survive across tasks.
+
 ## Code Standards
 
 - Explicit typing for exported/public APIs
