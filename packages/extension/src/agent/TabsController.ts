@@ -145,7 +145,11 @@ export class TabsController {
 		// Reuse an existing tab with the same URL instead of stacking duplicates.
 		// Adopted tabs keep `isInitial` semantics: the user owns them, so they are
 		// never added to the run's tab group and never auto-closed.
-		const existing = await chrome.tabs.query({ url })
+		// Scoped to this window: a tab from another window is evicted by the
+		// next syncTabs, which would silently strand the agent on the wrong page.
+		const existing = await chrome.tabs.query(
+			this.windowId != null ? { url, windowId: this.windowId } : { url }
+		)
 		const match = existing.find((tab) => tab.id !== undefined && !tab.pinned)
 		if (match?.id != null) {
 			debug('openNewTab: reusing existing tab', match.id)
@@ -439,15 +443,22 @@ export class TabsController {
 	}
 
 	async waitUntilTabLoaded(tabId: number, options: { signal?: AbortSignal } = {}): Promise<void> {
+		options.signal?.throwIfAborted()
 		const tab = this.tabs.find((t) => t.id === tabId)
 		if (!tab) throw new Error(`Tab ID ${tabId} not found in tab list.`)
-		if (tab.status === 'complete') return
+
+		debug('waitUntilTabLoaded', tabId)
+		// The cached status can be stale right after an in-place navigation —
+		// it still reports the previous page's `complete`, which would make
+		// the whole wait a no-op. Sync from the browser before trusting it;
+		// this doubles as the first poll of the wait below.
+		await this.syncTabs()
+		if (this.tabs.find((t) => t.id === tabId)?.status === 'complete') return
 
 		// When a tracked tab is closed or untracked.
 		// The tab object will be removed from the tab list.
 		// Finding the latest tab object is the only way to know if it's closed.
 
-		debug('waitUntilTabLoaded', tabId)
 		await waitUntil(
 			async () => {
 				await this.syncTabs()

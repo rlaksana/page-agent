@@ -153,10 +153,10 @@ export function initPageController() {
 						const pc = (await getPC()) as any
 						sendResponse(await pc[methodName](...(payload || [])))
 					} catch (error: any) {
-						sendResponse({
-							success: false,
-							error: error instanceof Error ? error.message : String(error),
-						})
+						const errorMessage = error instanceof Error ? error.message : String(error)
+						// `message` keeps the DomActionReturn contract uniform (`error`
+						// alone used to surface as `undefined` to the LLM).
+						sendResponse({ success: false, error: errorMessage, message: errorMessage })
 					}
 				})()
 				break

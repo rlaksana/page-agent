@@ -235,12 +235,28 @@ export class RemotePageController {
 			}
 		}
 
-		return sendMessage({
+		const res = await sendMessage({
 			type: 'PAGE_CONTROL',
 			action: action,
 			targetTabId: this.currentTabId!,
 			payload,
 		})
+		if (!res) {
+			// Transport failure — typically the tab navigating mid-call (the
+			// content script is torn down during commits). The LLM needs an
+			// actionable message, not a bare null.
+			return {
+				success: false,
+				message:
+					'No response from the page (it may be navigating). Retry the action, or use reload_page if it persists.',
+			}
+		}
+		if (res.success === false && !res.message) {
+			// Older content scripts report `{success:false, error}` — lift it
+			// into `message` so every DomActionReturn speaks the same contract.
+			res.message = res.error ?? 'The page action failed.'
+		}
+		return res
 	}
 }
 
