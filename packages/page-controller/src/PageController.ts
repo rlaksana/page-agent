@@ -49,6 +49,13 @@ interface ActionResult {
 }
 
 /**
+ * Cap on the serialized element list handed to the LLM. Full-page extraction
+ * on a very heavy page can otherwise overflow the context window and kill
+ * the task at step one.
+ */
+const MAX_SIMPLIFIED_HTML_CHARS = 200_000
+
+/**
  * PageController manages DOM state and element interactions.
  * It provides async methods for all DOM operations, keeping state isolated.
  *
@@ -194,11 +201,21 @@ export class PageController extends EventTarget {
 			interactiveBlacklist: blacklist,
 		})
 
-		this.simplifiedHTML = dom.flatTreeToString(
+		const serialized = dom.flatTreeToString(
 			this.flatTree,
 			this.config.includeAttributes,
 			this.config.keepSemanticTags
 		)
+		if (serialized.length > MAX_SIMPLIFIED_HTML_CHARS) {
+			// Cut at an element boundary (line) so no half-serialized element is
+			// shown, and tell the model how to reach the hidden rest.
+			const cut = Math.max(serialized.lastIndexOf('\n', MAX_SIMPLIFIED_HTML_CHARS), 0)
+			this.simplifiedHTML =
+				serialized.slice(0, cut) +
+				`\n[... Page truncated at ${MAX_SIMPLIFIED_HTML_CHARS} characters — too much content for one view. Use scroll to bring more into view, or extract_content to read the full text.]`
+		} else {
+			this.simplifiedHTML = serialized
+		}
 
 		this.selectorMap.clear()
 		this.selectorMap = dom.getSelectorMap(this.flatTree)
