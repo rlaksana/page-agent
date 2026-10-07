@@ -7,6 +7,8 @@ import type {
 	RetryEvent,
 } from '@page-agent/core'
 import {
+	ArrowLeft,
+	ArrowUp,
 	Check,
 	ChevronDown,
 	ChevronRight,
@@ -14,7 +16,9 @@ import {
 	CircleCheck,
 	Copy,
 	Eye,
+	FileText,
 	Globe,
+	Hand,
 	Keyboard,
 	MousePointerClick,
 	RefreshCw,
@@ -22,10 +26,11 @@ import {
 	XCircle,
 	Zap,
 } from 'lucide-react'
-import { Fragment, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
+import { useT } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 
 // ---------------------------------------------------------------------------
@@ -116,6 +121,7 @@ function JsonCode({ value }: { value: unknown }) {
 
 /** Labeled read-only code block (Input / Output / Raw …) with a copy button. */
 function CodeBlock({ label, value }: { label: string; value: unknown }) {
+	const t = useT()
 	const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2)
 
 	return (
@@ -123,7 +129,7 @@ function CodeBlock({ label, value }: { label: string; value: unknown }) {
 			<div className="lab">{label}</div>
 			<pre className="code mono">
 				<JsonCode value={value} />
-				<CopyIconButton text={text} label={`Copy ${label.toLowerCase()}`} />
+				<CopyIconButton text={text} label={`${t('common.copy')}: ${label}`} />
 			</pre>
 		</div>
 	)
@@ -134,6 +140,8 @@ function CodeBlock({ label, value }: { label: string; value: unknown }) {
 // ---------------------------------------------------------------------------
 
 export function MarkdownContent({ content }: { content: string }) {
+	const t = useT()
+
 	return (
 		<ReactMarkdown
 			remarkPlugins={[remarkGfm]}
@@ -172,7 +180,7 @@ export function MarkdownContent({ content }: { content: string }) {
 							<div className="cbh">
 								<span className="lab">{lang}</span>
 								<span className="sp" />
-								<CopyIconButton text={raw} label="Copy code" />
+								<CopyIconButton text={raw} label={t('card.copyCode')} />
 							</div>
 							<pre>{children}</pre>
 						</div>
@@ -203,15 +211,17 @@ function extractText(node: React.ReactNode): string {
 // ---------------------------------------------------------------------------
 
 export function ResultCard({ success, text }: { success: boolean; text: string }) {
+	const t = useT()
+
 	return (
 		<div className="res">
 			<div className="rh">
 				<span className={cn('pill', success ? 'p-ok' : 'p-err')}>
 					<span className="dot" />
-					{success ? 'Success' : 'Failed'}
+					{success ? t('card.success') : t('card.failed')}
 				</span>
 				<span className="sp" />
-				{text && <CopyIconButton text={text} label="Copy result" />}
+				{text && <CopyIconButton text={text} label={t('card.copyResult')} />}
 			</div>
 			{text && (
 				<div className="md">
@@ -233,6 +243,10 @@ function ActionIcon({ name, className }: { name: string; className?: string }) {
 		input: <Keyboard className={className} />,
 		scroll: <ChevronsDown className={className} />,
 		go_to_url: <Globe className={className} />,
+		go_back: <ArrowLeft className={className} />,
+		reload_page: <RefreshCw className={className} />,
+		press_key: <Keyboard className={className} />,
+		extract_content: <FileText className={className} />,
 		done: <CircleCheck className={className} />,
 	}
 	return icons[name] ?? <Zap className={className} />
@@ -246,11 +260,12 @@ function ReflectionSection({
 	reflection: AgentStepEvent['reflection']
 	defaultOpen: boolean
 }) {
+	const t = useT()
 	const [open, setOpen] = useState(defaultOpen)
 	const items = [
-		{ label: 'Eval', value: reflection.evaluation_previous_goal },
-		{ label: 'Memory', value: reflection.memory },
-		{ label: 'Next', value: reflection.next_goal },
+		{ label: t('card.eval'), value: reflection.evaluation_previous_goal },
+		{ label: t('card.memory'), value: reflection.memory },
+		{ label: t('card.next'), value: reflection.next_goal },
 	].filter((item) => item.value)
 
 	if (items.length === 0) return null
@@ -259,7 +274,7 @@ function ReflectionSection({
 		<>
 			<button type="button" className="think" aria-expanded={open} onClick={() => setOpen(!open)}>
 				<Sparkle className="size-3.5" />
-				<span>Reflection</span>
+				<span>{t('card.reflection')}</span>
 				{open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
 			</button>
 			{open && (
@@ -280,6 +295,7 @@ function ReflectionSection({
 
 /** Raw request/response debug tabs, restyled for the tool body. */
 function RawSection({ rawRequest, rawResponse }: { rawRequest?: unknown; rawResponse?: unknown }) {
+	const t = useT()
 	const [tab, setTab] = useState<'request' | 'response' | null>(null)
 
 	if (rawRequest == null && rawResponse == null) return null
@@ -289,7 +305,7 @@ function RawSection({ rawRequest, rawResponse }: { rawRequest?: unknown; rawResp
 	return (
 		<div>
 			<div className="lab" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-				Raw
+				{t('card.raw')}
 				{rawRequest != null && (
 					<button
 						type="button"
@@ -298,7 +314,7 @@ function RawSection({ rawRequest, rawResponse }: { rawRequest?: unknown; rawResp
 						aria-expanded={tab === 'request'}
 						onClick={() => setTab(tab === 'request' ? null : 'request')}
 					>
-						Request
+						{t('card.request')}
 					</button>
 				)}
 				{rawResponse != null && (
@@ -309,12 +325,15 @@ function RawSection({ rawRequest, rawResponse }: { rawRequest?: unknown; rawResp
 						aria-expanded={tab === 'response'}
 						onClick={() => setTab(tab === 'response' ? null : 'response')}
 					>
-						Response
+						{t('card.response')}
 					</button>
 				)}
 			</div>
 			{content != null && (
-				<CodeBlock label={tab === 'request' ? 'Request' : 'Response'} value={content} />
+				<CodeBlock
+					label={tab === 'request' ? t('card.request') : t('card.response')}
+					value={content}
+				/>
 			)}
 		</div>
 	)
@@ -329,6 +348,7 @@ export function StepCard({
 	running?: boolean
 	last?: boolean
 }) {
+	const t = useT()
 	const [open, setOpen] = useState(false)
 	const isDone = event.action?.name === 'done'
 	const doneInput = isDone ? (event.action.input as { text?: string; success?: boolean }) : null
@@ -337,7 +357,7 @@ export function StepCard({
 		<div className={cn('st', last && 'last')}>
 			<span className={cn('node', running ? 'n-run' : 'n-ok')}>{event.stepIndex + 1}</span>
 			<div className="sh">
-				<span>Step {event.stepIndex + 1}</span>
+				<span>{t('card.step', { step: event.stepIndex + 1 })}</span>
 			</div>
 			<div className="stack">
 				<ReflectionSection reflection={event.reflection} defaultOpen={!!running} />
@@ -352,14 +372,14 @@ export function StepCard({
 							<span className="ta">
 								{isDone
 									? doneInput?.success === false
-										? 'failed'
-										: 'success'
+										? t('card.failed')
+										: t('card.success')
 									: JSON.stringify(event.action.input)}
 							</span>
 						</span>
 						{running ? (
 							<span className="ts run">
-								<RefreshCw className="size-3 spin" /> Running
+								<RefreshCw className="size-3 spin" /> {t('card.running')}
 							</span>
 						) : (
 							<span className="ts ok">
@@ -373,8 +393,8 @@ export function StepCard({
 					{running && <div className="shim" />}
 					{open && (
 						<div className="tb">
-							{!isDone && <CodeBlock label="Input" value={event.action.input} />}
-							<CodeBlock label="Output" value={event.action.output} />
+							{!isDone && <CodeBlock label={t('card.input')} value={event.action.input} />}
+							<CodeBlock label={t('card.output')} value={event.action.output} />
 							<RawSection rawRequest={event.rawRequest} rawResponse={event.rawResponse} />
 						</div>
 					)}
@@ -398,6 +418,7 @@ function ObservationCard({ event }: { event: ObservationEvent }) {
 }
 
 function RetryCard({ event }: { event: RetryEvent }) {
+	const t = useT()
 	const dots = Array.from({ length: Math.min(event.maxAttempts, 10) }, (_, i) => i < event.attempt)
 
 	return (
@@ -412,7 +433,7 @@ function RetryCard({ event }: { event: RetryEvent }) {
 						))}
 					</span>
 					<div className="meta" style={{ marginTop: 4 }}>
-						Attempt {event.attempt} of {event.maxAttempts}
+						{t('card.attemptOf', { attempt: event.attempt, max: event.maxAttempts })}
 					</div>
 				</div>
 			</div>
@@ -421,6 +442,7 @@ function RetryCard({ event }: { event: RetryEvent }) {
 }
 
 function ErrorCard({ event }: { event: AgentErrorEvent }) {
+	const t = useT()
 	const [showRaw, setShowRaw] = useState(false)
 
 	return (
@@ -438,12 +460,12 @@ function ErrorCard({ event }: { event: AgentErrorEvent }) {
 								aria-expanded={showRaw}
 								onClick={() => setShowRaw(!showRaw)}
 							>
-								{showRaw ? 'Hide raw response' : 'Show raw response'}
+								{showRaw ? t('card.hideRaw') : t('card.showRaw')}
 							</button>
 						</div>
 					)}
 					{showRaw && event.rawResponse != null && (
-						<CodeBlock label="Raw response" value={event.rawResponse} />
+						<CodeBlock label={t('card.rawResponse')} value={event.rawResponse} />
 					)}
 				</div>
 			</div>
@@ -451,17 +473,112 @@ function ErrorCard({ event }: { event: AgentErrorEvent }) {
 	)
 }
 
+/**
+ * Prompt docked above the composer while the agent waits for the user:
+ * free-text answer (`ask`) or a proceed/decline confirmation (`confirm`).
+ */
+export function AskUserCard({
+	question,
+	kind,
+	onAnswer,
+}: {
+	question: string
+	kind: 'ask' | 'confirm'
+	onAnswer: (answer: string) => void
+}) {
+	const t = useT()
+	const [value, setValue] = useState('')
+	const inputRef = useRef<HTMLTextAreaElement>(null)
+
+	useEffect(() => {
+		inputRef.current?.focus({ preventScroll: true })
+	}, [])
+
+	if (kind === 'confirm') {
+		return (
+			<div className="askw">
+				<div className="askq">
+					<Hand className="size-3.5" />
+					<span>{t('ask.confirmTitle')}</span>
+				</div>
+				<div className="askt" role="question">
+					{question}
+				</div>
+				<div className="cr">
+					<span className="sp" />
+					<button type="button" className="btn g" onClick={() => onAnswer('no')}>
+						{t('ask.decline')}
+					</button>
+					<button
+						type="button"
+						className="send"
+						onClick={() => onAnswer('yes')}
+						aria-label={t('ask.proceed')}
+					>
+						<Check className="size-4" />
+					</button>
+				</div>
+			</div>
+		)
+	}
+
+	const submit = () => {
+		const text = value.trim()
+		if (text) onAnswer(text)
+	}
+
+	return (
+		<div className="askw">
+			<div className="askq">
+				<Hand className="size-3.5" />
+				<span>{t('ask.title')}</span>
+			</div>
+			<div className="askt" role="question">
+				{question}
+			</div>
+			<textarea
+				ref={inputRef}
+				className="ta2"
+				rows={2}
+				placeholder={t('ask.placeholder')}
+				aria-label={t('ask.yourAnswer')}
+				value={value}
+				onChange={(e) => setValue(e.target.value)}
+				onKeyDown={(e) => {
+					if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+						e.preventDefault()
+						submit()
+					}
+				}}
+			/>
+			<div className="cr">
+				<span className="sp" />
+				<button
+					type="button"
+					className="send"
+					disabled={!value.trim()}
+					onClick={submit}
+					aria-label={t('ask.sendAnswer')}
+				>
+					<ArrowUp className="size-4" />
+				</button>
+			</div>
+		</div>
+	)
+}
+
 /** Live activity pill shown at the bottom of the feed while running. */
 export function ActivityCard({ activity }: { activity: AgentActivity }) {
+	const t = useT()
 	const info = (() => {
 		switch (activity.type) {
 			case 'thinking':
-				return { text: 'Thinking…', icon: <Sparkle className="size-3.5" /> }
+				return { text: t('card.thinking'), icon: <Sparkle className="size-3.5" /> }
 			case 'executing':
 				return {
 					text: (
 						<>
-							Executing <span className="mono">{activity.tool}</span>
+							{t('card.executing')} <span className="mono">{activity.tool}</span>
 						</>
 					),
 					icon: <RefreshCw className="size-3.5 spin" />,
@@ -470,14 +587,14 @@ export function ActivityCard({ activity }: { activity: AgentActivity }) {
 				return {
 					text: (
 						<>
-							Done: <span className="mono">{activity.tool}</span>
+							{t('card.executed')} <span className="mono">{activity.tool}</span>
 						</>
 					),
 					icon: <Check className="size-3.5" />,
 				}
 			case 'retrying':
 				return {
-					text: `Retrying (${activity.attempt}/${activity.maxAttempts})…`,
+					text: t('card.retrying', { attempt: activity.attempt, max: activity.maxAttempts }),
 					icon: <RefreshCw className="size-3.5 spin" />,
 				}
 			case 'error':
@@ -506,6 +623,8 @@ export function EventCard({
 	running?: boolean
 	last?: boolean
 }) {
+	const t = useT()
+
 	if (event.type === 'step') {
 		if (event.action?.name === 'done') {
 			const input = event.action.input as { text?: string; success?: boolean }
@@ -530,10 +649,18 @@ export function EventCard({
 		return <RetryCard event={event} />
 	}
 
+	if (event.type === 'user_takeover') {
+		return (
+			<div className="obs" style={{ paddingLeft: 34 }}>
+				<Hand className="size-3.5" />
+				<span>{t('card.userTakeover')}</span>
+			</div>
+		)
+	}
+
 	if (event.type === 'error') {
 		return <ErrorCard event={event} />
 	}
 
-	// 'user_takeover' has no visual of its own yet.
 	return null
 }

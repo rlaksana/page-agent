@@ -4,6 +4,7 @@ import { BookOpen, ChevronRight, FileText, Globe, Sparkle } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { siGithub } from 'simple-icons'
 
+import { useT } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 
 // Status dot indicator (used by the hub entry)
@@ -47,22 +48,29 @@ export function LogoMark({ className }: { className?: string }) {
 	)
 }
 
-const STATUS_PILL: Record<AgentStatus, { cls: string; label: string }> = {
-	idle: { cls: '', label: 'Ready' },
-	running: { cls: 'p-run', label: 'Running' },
-	completed: { cls: 'p-ok', label: 'Done' },
-	error: { cls: 'p-err', label: 'Error' },
-	stopped: { cls: 'p-warn', label: 'Stopped' },
+const STATUS_PILL: Record<
+	AgentStatus,
+	{
+		cls: string
+		key: 'status.ready' | 'status.running' | 'status.done' | 'status.error' | 'status.stopped'
+	}
+> = {
+	idle: { cls: '', key: 'status.ready' },
+	running: { cls: 'p-run', key: 'status.running' },
+	completed: { cls: 'p-ok', key: 'status.done' },
+	error: { cls: 'p-err', key: 'status.error' },
+	stopped: { cls: 'p-warn', key: 'status.stopped' },
 }
 
 /** Status pill in the header (design token colors per status). */
 export function StatusPill({ status }: { status: AgentStatus }) {
+	const t = useT()
 	const pill = STATUS_PILL[status]
 
 	return (
 		<span className={cn('pill', pill.cls)}>
 			<span className="dot" />
-			{pill.label}
+			{t(pill.key)}
 		</span>
 	)
 }
@@ -121,10 +129,10 @@ export function MotionOverlay({ active }: { active: boolean }) {
 }
 
 const SUGGESTIONS = [
-	{ icon: FileText, text: 'Summarize this page' },
-	{ icon: TableIcon, text: 'Extract the table as Markdown' },
-	{ icon: FormIcon, text: 'Fill in this form for me' },
-]
+	{ icon: FileText, key: 'empty.suggest1' },
+	{ icon: TableIcon, key: 'empty.suggest2' },
+	{ icon: FormIcon, key: 'empty.suggest3' },
+] as const
 
 // Small inline SVGs for suggestions (lucide has no combined form/table glyph)
 function TableIcon({ className }: { className?: string }) {
@@ -173,6 +181,8 @@ function FormIcon({ className }: { className?: string }) {
 
 /** Empty state: breathing rings + logo tile + tagline + suggestion chips. */
 export function EmptyState({ onSuggest }: { onSuggest: (task: string) => void }) {
+	const t = useT()
+
 	return (
 		<div className="empty">
 			<div className="rings">
@@ -183,20 +193,51 @@ export function EmptyState({ onSuggest }: { onSuggest: (task: string) => void })
 					<Sparkle className="size-8" />
 				</div>
 			</div>
-			<h1 className="h1">Page Agent</h1>
+			<h1 className="h1">{t('empty.title')}</h1>
 			<div className="tagl">
-				Enter a task to automate this page
+				{t('empty.tagline')}
 				<span className="caret" />
 			</div>
 			<div className="sugs">
-				{SUGGESTIONS.map(({ icon: Icon, text }) => (
-					<button key={text} type="button" className="sug" onClick={() => onSuggest(text)}>
+				{SUGGESTIONS.map(({ icon: Icon, key }) => (
+					<button key={key} type="button" className="sug" onClick={() => onSuggest(t(key))}>
 						<Icon className="size-4" />
-						<span>{text}</span>
+						<span>{t(key)}</span>
 						<ChevronRight className="size-3.5" />
 					</button>
 				))}
 			</div>
+		</div>
+	)
+}
+
+/**
+ * First-run view: no stored LLM config yet. Offers the demo endpoint
+ * or bringing your own key (opens the config panel).
+ */
+export function Onboarding({ onDemo, onOwnKey }: { onDemo: () => void; onOwnKey: () => void }) {
+	const t = useT()
+
+	return (
+		<div className="empty">
+			<div className="bigl">
+				<Sparkle className="size-8" />
+			</div>
+			<h1 className="h1">{t('onboarding.title')}</h1>
+			<div className="obd">{t('onboarding.desc')}</div>
+			<div className="sugs">
+				<button type="button" className="sug" onClick={onDemo}>
+					<Sparkle className="size-4" />
+					<span>{t('onboarding.demo')}</span>
+					<ChevronRight className="size-3.5" />
+				</button>
+				<button type="button" className="sug" onClick={onOwnKey}>
+					<BookOpen className="size-4" />
+					<span>{t('onboarding.ownKey')}</span>
+					<ChevronRight className="size-3.5" />
+				</button>
+			</div>
+			<HomeLinks />
 		</div>
 	)
 }

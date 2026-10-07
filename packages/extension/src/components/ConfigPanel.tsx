@@ -7,13 +7,16 @@ import {
 	EyeOff,
 	Layers,
 	Loader2,
+	Plug,
 	TriangleAlert,
+	X,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { siGithub } from 'simple-icons'
 
 import { DEMO_BASE_URL, DEMO_MODEL, isTestingEndpoint } from '@/agent/constants'
 import type { ExtConfig, LanguagePreference } from '@/agent/useAgent'
+import { useT } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 
 interface ConfigPanelProps {
@@ -21,6 +24,14 @@ interface ConfigPanelProps {
 	onSave: (config: ExtConfig) => Promise<void>
 	onClose: () => void
 }
+
+/** A saved provider profile: enough to restore baseURL/model/apiKey in one click. */
+interface ProviderProfile {
+	name: string
+	config: Pick<ExtConfig, 'baseURL' | 'model' | 'apiKey'>
+}
+
+const PROVIDERS_KEY = 'savedProviders'
 
 /** Design-system switch (`.sw` pill with sliding knob). */
 function Switch({
@@ -46,13 +57,14 @@ function Switch({
 	)
 }
 
-const LANGUAGES: { value: LanguagePreference; label: string }[] = [
-	{ value: undefined, label: 'System' },
+const LANGUAGES: { value: LanguagePreference; label: string; key?: 'settings.langSystem' }[] = [
+	{ value: undefined, label: 'System', key: 'settings.langSystem' },
 	{ value: 'en-US', label: 'English' },
 	{ value: 'zh-CN', label: '中文' },
 ]
 
 export function ConfigPanel({ config, onSave, onClose }: ConfigPanelProps) {
+	const t = useT()
 	const [baseURL, setBaseURL] = useState(config?.baseURL || DEMO_BASE_URL)
 	const [model, setModel] = useState(config?.model || DEMO_MODEL)
 	const [apiKey, setApiKey] = useState(config?.apiKey)
@@ -68,8 +80,19 @@ export function ConfigPanel({ config, onSave, onClose }: ConfigPanelProps) {
 	const [disableNamedToolChoice, setDisableNamedToolChoice] = useState(
 		config?.disableNamedToolChoice ?? false
 	)
+	const [confirmSensitiveActions, setConfirmSensitiveActions] = useState(
+		config?.confirmSensitiveActions ?? false
+	)
+	const [blockedSites, setBlockedSites] = useState((config?.blockedSites ?? []).join('\n'))
+	const [viewportExpansion, setViewportExpansion] = useState<number | undefined>(
+		config?.viewportExpansion
+	)
 	const [advancedOpen, setAdvancedOpen] = useState(false)
 	const [saving, setSaving] = useState(false)
+	const [testing, setTesting] = useState(false)
+	const [testResult, setTestResult] = useState<{ ok: boolean; text: string } | null>(null)
+	const [providers, setProviders] = useState<ProviderProfile[]>([])
+	const [providerName, setProviderName] = useState('')
 	const [userAuthToken, setUserAuthToken] = useState('')
 	const [copied, setCopied] = useState(false)
 	const [showToken, setShowToken] = useState(false)
@@ -87,6 +110,9 @@ export function ConfigPanel({ config, onSave, onClose }: ConfigPanelProps) {
 		setExperimentalLlmsTxt(config?.experimentalLlmsTxt ?? false)
 		setExperimentalIncludeAllTabs(config?.experimentalIncludeAllTabs ?? false)
 		setDisableNamedToolChoice(config?.disableNamedToolChoice ?? false)
+		setConfirmSensitiveActions(config?.confirmSensitiveActions ?? false)
+		setBlockedSites((config?.blockedSites ?? []).join('\n'))
+		setViewportExpansion(config?.viewportExpansion)
 	}
 
 	// Poll for user auth token every second until found
@@ -121,73 +147,150 @@ export function ConfigPanel({ config, onSave, onClose }: ConfigPanelProps) {
 		}
 	}
 
-	const handleSave = async () => {
+	/** Probe the endpoint with GET /models (same request context the agent uses). */
+	const handleTestConnection = async () => {
+		setTesting(true)
+		setTestResult(null)
+		const started = performance.now()
+		try {
+			const response = await fetch(`${baseURL.replace(/\/+$/, '')}/models`, {
+				headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+			})
+			const ms = Math.round(performance.now() - started)
+			setTestResult(
+				response.ok
+					? { ok: true, text: `✓ ${t('settings.testOk')} (${ms}ms)` }
+					: { ok: false, text: `✗ ${t('settings.testFail')} — HTTP ${response.status}` }
+			)
+		} catch (error) {
+			setTestResult({
+				ok: false,
+				text: `✗ ${t('settings.testFail')} — ${(error as Error).message}`,
+			})
+		} finally {
+			setTesting(false)
+		}
+	}
+
+	const handleSave = async (
+		override?: Partial<Pick<ExtConfig, 'baseURL' | 'model' | 'apiKey'>>
+	) => {
 		setSaving(true)
 		try {
 			await onSave({
-				apiKey,
-				baseURL,
-				model,
+				apiKey: override?.apiKey ?? apiKey,
+				baseURL: override?.baseURL ?? baseURL,
+				model: override?.model ?? model,
 				language,
 				maxSteps: maxSteps || undefined,
 				systemInstruction: systemInstruction || undefined,
 				experimentalLlmsTxt,
 				experimentalIncludeAllTabs,
 				disableNamedToolChoice,
+				confirmSensitiveActions,
+				blockedSites: blockedSites.trim() ? blockedSites.split(/[\n,;\s]+/) : undefined,
+				viewportExpansion: typeof viewportExpansion === 'number' ? viewportExpansion : undefined,
 			})
 		} finally {
 			setSaving(false)
 		}
 	}
 
+	// --- Saved provider profiles (switch without retyping baseURL/model/apiKey) ---
+
+	useEffect(() => {
+		chrome.storage.local.get(PROVIDERS_KEY).then((result) => {
+			setProviders((result[PROVIDERS_KEY] as ProviderProfile[] | undefined) ?? [])
+		})
+	}, [])
+
+	const persistProviders = (next: ProviderProfile[]) => {
+		setProviders(next)
+		void chrome.storage.local.set({ [PROVIDERS_KEY]: next })
+	}
+
+	const saveCurrentProvider = () => {
+		// Default the profile name to the model, so "gpt-5.1" is a one-keystroke save.
+		const name = providerName.trim() || model
+		if (!name) return
+		persistProviders([
+			...providers.filter((p) => p.name !== name),
+			{ name, config: { baseURL, model, apiKey } },
+		])
+		setProviderName('')
+	}
+
+	const deleteProvider = (name: string) => {
+		persistProviders(providers.filter((p) => p.name !== name))
+	}
+
+	const applyProvider = async (profile: ProviderProfile) => {
+		// Fill the form from the profile, then persist through the normal save
+		// path (passing the values explicitly — state setters above are async)
+		// so the agent is rebuilt with the new provider.
+		setBaseURL(profile.config.baseURL)
+		setModel(profile.config.model)
+		setApiKey(profile.config.apiKey)
+		await handleSave(profile.config)
+	}
+
+	const isProviderActive = (p: ProviderProfile) =>
+		p.config.baseURL === baseURL && p.config.model === model && p.config.apiKey === apiKey
+
 	const maskedToken = userAuthToken
 		? showToken
 			? userAuthToken
 			: `${userAuthToken.slice(0, 4)}${'•'.repeat(Math.max(0, userAuthToken.length - 8))}${userAuthToken.slice(-4)}`
-		: 'Loading...'
+		: t('settings.loading')
 
 	return (
 		<>
 			<div className="sub">
-				<button type="button" className="ib" onClick={onClose} aria-label="Back" title="Back">
+				<button
+					type="button"
+					className="ib"
+					onClick={onClose}
+					aria-label={t('common.back')}
+					title={t('common.back')}
+				>
 					<ArrowLeft className="size-4" />
 				</button>
-				<span className="ttl">Settings</span>
+				<span className="ttl">{t('settings.title')}</span>
 				<span className="sp" />
 			</div>
 
 			<div className="set">
 				{/* Model provider */}
 				<div className="sec">
-					<span className="lab">Model provider</span>
+					<span className="lab">{t('settings.provider')}</span>
 					{isTestingEndpoint(baseURL) && (
 						<div className="note nw">
 							<TriangleAlert className="size-4" />
 							<div>
-								You are using our testing API. By continuing you agree to the{' '}
+								{t('settings.testingNotice1')}
 								<a
 									href="https://github.com/alibaba/page-agent/blob/main/docs/terms-and-privacy.md"
 									target="_blank"
 									rel="noopener noreferrer"
 								>
-									Terms of Use
-								</a>{' '}
-								and{' '}
-								<a
-									href="https://github.com/alibaba/page-agent/blob/main/docs/terms-and-privacy.md"
-									target="_blank"
-									rel="noopener noreferrer"
-								>
-									Privacy Policy
+									{t('settings.terms')}
 								</a>
-								.
+								{t('settings.testingNotice2')}
+								<a
+									href="https://github.com/alibaba/page-agent/blob/main/docs/terms-and-privacy.md"
+									target="_blank"
+									rel="noopener noreferrer"
+								>
+									{t('settings.privacyPolicy')}
+								</a>
+								{t('settings.testingNotice3')}
 							</div>
 						</div>
 					)}
 					<div className="grp">
 						<div className="fld">
 							<label className="lb" htmlFor="base-url">
-								Base URL
+								{t('settings.baseUrl')}
 							</label>
 							<input
 								id="base-url"
@@ -199,7 +302,7 @@ export function ConfigPanel({ config, onSave, onClose }: ConfigPanelProps) {
 						</div>
 						<div className="fld">
 							<label className="lb" htmlFor="model">
-								Model
+								{t('settings.model')}
 							</label>
 							<input
 								id="model"
@@ -211,7 +314,7 @@ export function ConfigPanel({ config, onSave, onClose }: ConfigPanelProps) {
 						</div>
 						<div className="fld">
 							<label className="lb" htmlFor="api-key">
-								API key
+								{t('settings.apiKey')}
 							</label>
 							<div className="inw">
 								<input
@@ -225,7 +328,7 @@ export function ConfigPanel({ config, onSave, onClose }: ConfigPanelProps) {
 									type="button"
 									className="ib"
 									onClick={() => setShowApiKey(!showApiKey)}
-									aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
+									aria-label={showApiKey ? t('settings.hideApiKey') : t('settings.showApiKey')}
 									aria-pressed={showApiKey}
 								>
 									{showApiKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
@@ -233,16 +336,95 @@ export function ConfigPanel({ config, onSave, onClose }: ConfigPanelProps) {
 							</div>
 						</div>
 					</div>
+					<div className="fld" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+						<button
+							type="button"
+							className="btn g"
+							onClick={handleTestConnection}
+							disabled={testing || !baseURL}
+						>
+							{testing ? <Loader2 className="size-3.5 spin" /> : <Plug className="size-3.5" />}
+							{t('settings.testConnection')}
+						</button>
+						{testResult && (
+							<span
+								className="hint"
+								style={{ color: testResult.ok ? 'var(--ok)' : 'var(--err)', marginTop: 0 }}
+							>
+								{testResult.text}
+							</span>
+						)}
+					</div>
+				</div>
+
+				{/* Saved providers: one-click switching */}
+				<div className="sec">
+					<span className="lab">{t('settings.providers')}</span>
+					{providers.length === 0 ? (
+						<div className="hint">{t('settings.noProviders')}</div>
+					) : (
+						<div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+							{providers.map((p) => {
+								const active = isProviderActive(p)
+								return (
+									<span
+										key={p.name}
+										className="chip"
+										style={{ gap: 2, color: active ? 'var(--accent-text)' : undefined }}
+									>
+										<button
+											type="button"
+											style={{ all: 'unset', cursor: 'pointer', font: 'inherit' }}
+											onClick={() => void applyProvider(p)}
+											aria-label={`${t('settings.applyProvider')}: ${p.name}`}
+											title={`${t('settings.applyProvider')}: ${p.name}`}
+										>
+											{active ? '✓ ' : ''}
+											{p.name}
+										</button>
+										<button
+											type="button"
+											className="ib sm"
+											style={{ width: 16, height: 16 }}
+											onClick={() => deleteProvider(p.name)}
+											aria-label={`${t('settings.deleteProvider')}: ${p.name}`}
+											title={t('settings.deleteProvider')}
+										>
+											<X className="size-3" />
+										</button>
+									</span>
+								)
+							})}
+						</div>
+					)}
+					<div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 8 }}>
+						<input
+							className="in m"
+							style={{ flex: 1, minWidth: 0 }}
+							placeholder={t('settings.providerNamePlaceholder')}
+							value={providerName}
+							onChange={(e) => setProviderName(e.target.value)}
+							onKeyDown={(e) => {
+								if (e.key === 'Enter') {
+									e.preventDefault()
+									saveCurrentProvider()
+								}
+							}}
+						/>
+						<button type="button" className="btn g" onClick={saveCurrentProvider}>
+							{t('settings.saveProvider')}
+						</button>
+					</div>
 				</div>
 
 				{/* Behavior */}
 				<div className="sec">
-					<span className="lab">Behavior</span>
+					<span className="lab">{t('settings.behavior')}</span>
 					<div className="grp">
 						<div className="fld">
-							<label className="lb">Response language</label>
-							<div className="seg" role="radiogroup" aria-label="Response language">
-								{LANGUAGES.map(({ value, label }) => (
+							<label className="lb">{t('settings.responseLanguage')}</label>
+							<div className="seg" role="radiogroup" aria-label={t('settings.responseLanguage')}>
+								{LANGUAGES.map(({ value, label, key }) => (
 									<button
 										key={label}
 										type="button"
@@ -251,14 +433,14 @@ export function ConfigPanel({ config, onSave, onClose }: ConfigPanelProps) {
 										className={cn(language === value && 'on')}
 										onClick={() => setLanguage(value)}
 									>
-										{label}
+										{key ? t(key) : label}
 									</button>
 								))}
 							</div>
 						</div>
 						<div className="fld">
 							<label className="lb" htmlFor="max-steps">
-								Max steps
+								{t('settings.maxSteps')}
 							</label>
 							<input
 								id="max-steps"
@@ -270,18 +452,26 @@ export function ConfigPanel({ config, onSave, onClose }: ConfigPanelProps) {
 								value={maxSteps ?? ''}
 								onChange={(e) => setMaxSteps(e.target.value ? Number(e.target.value) : undefined)}
 							/>
-							<div className="hint">Between 1 and 200.</div>
+							<div className="hint">{t('settings.maxStepsHint')}</div>
+						</div>
+						<div className="swr">
+							<span>{t('settings.confirmSensitive')}</span>
+							<Switch
+								checked={confirmSensitiveActions}
+								onChange={setConfirmSensitiveActions}
+								label={t('settings.confirmSensitiveLabel')}
+							/>
 						</div>
 					</div>
 				</div>
 
 				{/* Access */}
 				<div className="sec">
-					<span className="lab">Access</span>
+					<span className="lab">{t('settings.access')}</span>
 					<div className="grp">
 						<div className="fld">
 							<label className="lb" htmlFor="user-auth-token">
-								User auth token
+								{t('settings.userAuthToken')}
 							</label>
 							<div className="inw">
 								<input
@@ -289,14 +479,14 @@ export function ConfigPanel({ config, onSave, onClose }: ConfigPanelProps) {
 									className="in m pr b"
 									readOnly
 									value={maskedToken}
-									aria-label="User auth token"
+									aria-label={t('settings.userAuthToken')}
 								/>
 								<button
 									type="button"
 									className="ib b"
 									onClick={() => setShowToken(!showToken)}
 									disabled={!userAuthToken}
-									aria-label={showToken ? 'Hide token' : 'Show token'}
+									aria-label={showToken ? t('settings.hideToken') : t('settings.showToken')}
 									aria-pressed={showToken}
 								>
 									{showToken ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
@@ -306,12 +496,12 @@ export function ConfigPanel({ config, onSave, onClose }: ConfigPanelProps) {
 									className="ib"
 									onClick={handleCopyToken}
 									disabled={!userAuthToken}
-									aria-label="Copy token"
+									aria-label={t('settings.copyToken')}
 								>
 									{copied ? <span role="status">✓</span> : <Copy className="size-4" />}
 								</button>
 							</div>
-							<div className="hint">Gives a website the ability to call this extension.</div>
+							<div className="hint">{t('settings.tokenHint')}</div>
 						</div>
 					</div>
 				</div>
@@ -328,7 +518,7 @@ export function ConfigPanel({ config, onSave, onClose }: ConfigPanelProps) {
 					}}
 				>
 					<Layers className="size-4" />
-					<span>Manage Page Agent Hub</span>
+					<span>{t('settings.hub')}</span>
 					<ExternalLink className="size-3.5" />
 				</button>
 
@@ -340,47 +530,81 @@ export function ConfigPanel({ config, onSave, onClose }: ConfigPanelProps) {
 						aria-expanded={advancedOpen}
 						onClick={() => setAdvancedOpen(!advancedOpen)}
 					>
-						Advanced
+						{t('settings.advanced')}
 						<ChevronDown className={cn('size-3.5', !advancedOpen && '-rotate-90')} />
 					</button>
 					{advancedOpen && (
 						<div className="grp">
 							<div className="fld">
 								<label className="lb" htmlFor="system-instruction">
-									System instruction
+									{t('settings.systemInstruction')}
 								</label>
 								<textarea
 									id="system-instruction"
 									className="tx"
-									placeholder="Additional instructions for the agent…"
+									placeholder={t('settings.systemInstructionPlaceholder')}
 									value={systemInstruction}
 									onChange={(e) => setSystemInstruction(e.target.value)}
 									rows={3}
 								/>
 							</div>
 							<div className="swr">
-								<span>Disable named tool_choice</span>
+								<span>{t('settings.disableNamedToolChoice')}</span>
 								<Switch
 									checked={disableNamedToolChoice}
 									onChange={setDisableNamedToolChoice}
-									label="Disable named tool_choice"
+									label={t('settings.disableNamedToolChoice')}
 								/>
 							</div>
 							<div className="swr">
-								<span>Experimental llms.txt support</span>
+								<span>{t('settings.experimentalLlmsTxt')}</span>
 								<Switch
 									checked={experimentalLlmsTxt}
 									onChange={setExperimentalLlmsTxt}
-									label="Experimental llms.txt support"
+									label={t('settings.experimentalLlmsTxt')}
 								/>
 							</div>
 							<div className="swr">
-								<span>Experimental include all tabs</span>
+								<span>{t('settings.experimentalAllTabs')}</span>
 								<Switch
 									checked={experimentalIncludeAllTabs}
 									onChange={setExperimentalIncludeAllTabs}
-									label="Experimental include all tabs"
+									label={t('settings.experimentalAllTabs')}
 								/>
+							</div>
+							<div className="fld">
+								<label className="lb" htmlFor="viewport-expansion">
+									{t('settings.viewportExpansion')}
+								</label>
+								<input
+									id="viewport-expansion"
+									className="in m"
+									inputMode="numeric"
+									placeholder="-1"
+									value={viewportExpansion ?? ''}
+									onChange={(e) =>
+										setViewportExpansion(
+											e.target.value !== '' && !Number.isNaN(Number(e.target.value))
+												? Number(e.target.value)
+												: undefined
+										)
+									}
+								/>
+								<div className="hint">{t('settings.viewportExpansionHint')}</div>
+							</div>
+							<div className="fld">
+								<label className="lb" htmlFor="blocked-sites">
+									{t('settings.blockedSites')}
+								</label>
+								<textarea
+									id="blocked-sites"
+									className="tx"
+									placeholder={t('settings.blockedSitesPlaceholder')}
+									value={blockedSites}
+									onChange={(e) => setBlockedSites(e.target.value)}
+									rows={3}
+								/>
+								<div className="hint">{t('settings.blockedSitesHint')}</div>
 							</div>
 						</div>
 					)}
@@ -390,10 +614,15 @@ export function ConfigPanel({ config, onSave, onClose }: ConfigPanelProps) {
 			{/* Save bar */}
 			<div className="sb">
 				<button type="button" className="btn lg" onClick={onClose}>
-					Cancel
+					{t('settings.cancel')}
 				</button>
-				<button type="button" className="btn lg p" onClick={handleSave} disabled={saving}>
-					{saving ? <Loader2 className="size-3.5 spin" /> : 'Save'}
+				<button
+					type="button"
+					className="btn lg p"
+					onClick={() => void handleSave()}
+					disabled={saving}
+				>
+					{saving ? <Loader2 className="size-3.5 spin" /> : t('settings.save')}
 				</button>
 			</div>
 
@@ -410,7 +639,7 @@ export function ConfigPanel({ config, onSave, onClose }: ConfigPanelProps) {
 						>
 							<path d={siGithub.path} />
 						</svg>{' '}
-						Source code
+						{t('settings.sourceCode')}
 					</a>
 					<a href="https://github.com/gaomeng1900" target="_blank" rel="noopener noreferrer">
 						Built with ♥ by @Simon
@@ -418,14 +647,14 @@ export function ConfigPanel({ config, onSave, onClose }: ConfigPanelProps) {
 				</div>
 				<div className="col2">
 					<a href="https://alibaba.github.io/page-agent/" target="_blank" rel="noopener noreferrer">
-						Home page
+						{t('settings.homePage')}
 					</a>
 					<a
 						href="https://github.com/alibaba/page-agent/blob/main/docs/terms-and-privacy.md"
 						target="_blank"
 						rel="noopener noreferrer"
 					>
-						Privacy
+						{t('settings.privacy')}
 					</a>
 				</div>
 			</div>

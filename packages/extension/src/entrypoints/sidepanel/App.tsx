@@ -9,18 +9,20 @@ import {
 	RotateCcw,
 	Settings,
 	Square,
+	X,
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { ConfigPanel } from '@/components/ConfigPanel'
 import { HistoryDetail } from '@/components/HistoryDetail'
 import { HistoryList } from '@/components/HistoryList'
-import { ActivityCard, CopyIconButton, EventCard } from '@/components/cards'
-import { EmptyState, HomeLinks, LogoMark, StatusPill } from '@/components/misc'
-import { saveSession } from '@/lib/db'
+import { ActivityCard, AskUserCard, CopyIconButton, EventCard } from '@/components/cards'
+import { EmptyState, HomeLinks, LogoMark, Onboarding, StatusPill } from '@/components/misc'
+import { TProvider, translator } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 
 import { TabsController } from '../../agent/TabsController'
+import { DEMO_CONFIG } from '../../agent/constants'
 import { useAgent } from '../../agent/useAgent'
 
 type View =
@@ -29,33 +31,38 @@ type View =
 	| { name: 'history' }
 	| { name: 'history-detail'; sessionId: string }
 
+/** Compact token count for the usage chip ("12.3k tokens"). */
+const fmtTokens = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
+
 export default function App() {
 	const [view, setView] = useState<View>({ name: 'chat' })
 	const [inputValue, setInputValue] = useState('')
 	const historyRef = useRef<HTMLDivElement>(null)
 	const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-	const { status, history, activity, currentTask, config, execute, stop, startNewChat, configure } =
-		useAgent()
+	const {
+		status,
+		history,
+		activity,
+		currentTask,
+		config,
+		configLoaded,
+		pendingAsk,
+		execute,
+		stop,
+		startNewChat,
+		answerAsk,
+		configure,
+	} = useAgent()
 	const isRunning = status === 'running'
 
-	// Persist session when task finishes
-	const prevStatusRef = useRef(status)
-	useEffect(() => {
-		const prev = prevStatusRef.current
-		prevStatusRef.current = status
+	// Sidepanel UI is English-only by requirement (the agent's response
+	// language is a separate setting that follows the task).
+	const t = translator()
 
-		if (
-			prev === 'running' &&
-			(status === 'completed' || status === 'error' || status === 'stopped') &&
-			history.length > 0 &&
-			currentTask
-		) {
-			saveSession({ task: currentTask, history, status }).catch((err) =>
-				console.error('[SidePanel] Failed to save session:', err)
-			)
-		}
-	}, [status, history, currentTask])
+	// Task queueing: a task submitted while the agent runs is queued and
+	// flushed automatically when the current task finishes (one slot).
+	const [queuedTask, setQueuedTask] = useState<string | null>(null)
 
 	// Auto-scroll to bottom on new events
 	useEffect(() => {
@@ -120,17 +127,30 @@ export default function App() {
 	const runTask = useCallback(
 		(task: string) => {
 			const normalizedTask = task.trim()
-			if (!normalizedTask || status === 'running') return
+			if (!normalizedTask) return
 
 			setInputValue('')
 			setView({ name: 'chat' })
+
+			if (isRunning) {
+				setQueuedTask(normalizedTask)
+				return
+			}
 
 			execute(normalizedTask).catch((error) => {
 				console.error('[SidePanel] Failed to execute task:', error)
 			})
 		},
-		[execute, status]
+		[execute, isRunning]
 	)
+
+	// Flush the queued task once the agent is free again.
+	useEffect(() => {
+		if (isRunning || !queuedTask) return
+		const next = queuedTask
+		setQueuedTask(null)
+		runTask(next)
+	}, [isRunning, queuedTask, runTask])
 
 	const handleSubmit = useCallback(
 		(e?: React.SyntheticEvent) => {
@@ -170,42 +190,66 @@ export default function App() {
 
 	// --- View routing ---
 
+	// Storage still loading (resolves in milliseconds) — render nothing to
+	// avoid flashing the onboarding view before the stored config arrives.
+	if (!configLoaded) return null
+
+	// First run: no stored LLM config — offer the demo endpoint or bring your own key.
+	if (config === null) {
+		return (
+			<TProvider value={t}>
+				<div className="ps">
+					<Onboarding
+						onDemo={() => void configure(DEMO_CONFIG)}
+						onOwnKey={() => setView({ name: 'config' })}
+					/>
+				</div>
+			</TProvider>
+		)
+	}
+
 	if (view.name === 'config') {
 		return (
-			<div className="ps">
-				<ConfigPanel
-					config={config}
-					onSave={async (newConfig) => {
-						await configure(newConfig)
-						setView({ name: 'chat' })
-					}}
-					onClose={() => setView({ name: 'chat' })}
-				/>
-			</div>
+			<TProvider value={t}>
+				<div className="ps">
+					<ConfigPanel
+						config={config}
+						onSave={async (newConfig) => {
+							await configure(newConfig)
+							setView({ name: 'chat' })
+						}}
+						onClose={() => setView({ name: 'chat' })}
+					/>
+				</div>
+			</TProvider>
 		)
 	}
 
 	if (view.name === 'history') {
 		return (
-			<div className="ps">
-				<HistoryList
-					onSelect={(id) => setView({ name: 'history-detail', sessionId: id })}
-					onBack={() => setView({ name: 'chat' })}
-					onRerun={runTask}
-				/>
-			</div>
+			<TProvider value={t}>
+				<div className="ps">
+					<HistoryList
+						onSelect={(id) => setView({ name: 'history-detail', sessionId: id })}
+						onBack={() => setView({ name: 'chat' })}
+						onRerun={runTask}
+					/>
+				</div>
+			</TProvider>
 		)
 	}
 
 	if (view.name === 'history-detail') {
 		return (
-			<div className="ps">
-				<HistoryDetail
-					sessionId={view.sessionId}
-					onBack={() => setView({ name: 'history' })}
-					onRerun={runTask}
-				/>
-			</div>
+			<TProvider value={t}>
+				<div className="ps">
+					<HistoryDetail
+						sessionId={view.sessionId}
+						onBack={() => setView({ name: 'history' })}
+						onRerun={runTask}
+					/>
+				</div>
+			</TProvider>
 		)
 	}
 
@@ -223,6 +267,24 @@ export default function App() {
 		return -1
 	})()
 
+	// Status flags (declared early: used by the aria-live region and result actions)
+	const isFailed = status === 'error'
+	const isFinished = status === 'completed' || status === 'stopped' || isFailed
+
+	// Total tokens consumed by this task's steps (usage comes from the LLM response).
+	const totalTokens = history.reduce(
+		(sum, e) => sum + (e.type === 'step' ? (e.usage?.totalTokens ?? 0) : 0),
+		0
+	)
+
+	// Max-steps exhaustion: the agent ran out of budget, not into an error.
+	// "Continue" picks up where it stopped (prior turns ride along as context).
+	const lastEvent = history.at(-1)
+	const isMaxStepsError =
+		isFailed &&
+		lastEvent?.type === 'error' &&
+		((lastEvent as { message?: string }).message ?? '').includes('Step count exceeded')
+
 	// Final result text from the last `done` step, if any.
 	const resultText = (() => {
 		for (let i = history.length - 1; i >= 0; i--) {
@@ -235,9 +297,6 @@ export default function App() {
 		return ''
 	})()
 
-	const isFailed = status === 'error'
-	const isFinished = status === 'completed' || status === 'stopped' || isFailed
-
 	const saveResultAsFile = () => {
 		const blob = new Blob([resultText], { type: 'text/markdown' })
 		const url = URL.createObjectURL(blob)
@@ -249,194 +308,258 @@ export default function App() {
 	}
 
 	const placeholder = isRunning
-		? 'Agent is working… stop it to type a new task'
+		? t('chat.queuePlaceholder')
 		: isFailed
-			? 'Describe what to change, or start a new task…'
+			? t('chat.failedPlaceholder')
 			: isFinished
-				? 'Ask a follow-up or start a new task…'
-				: 'Describe your task…'
+				? t('chat.finishedPlaceholder')
+				: t('chat.placeholder')
 
 	return (
-		<div className="ps">
-			{isRunning && <div className="glowb" />}
+		<TProvider value={t}>
+			<div className="ps">
+				{isRunning && <div className="glowb" />}
 
-			{/* Header */}
-			<header className="hd">
-				<LogoMark />
-				<span className="ttl">Page Agent</span>
-				<span className="sp" />
-				<StatusPill status={status} />
-				<button
-					type="button"
-					className="ib"
-					onClick={handleNewChat}
-					disabled={isRunning}
-					aria-label="New chat"
-					title="New chat"
-				>
-					<Plus className="size-4" />
-				</button>
-				<button
-					type="button"
-					className="ib"
-					onClick={() => setView({ name: 'history' })}
-					aria-label="History"
-					title="History"
-				>
-					<History className="size-4" />
-				</button>
-				<button
-					type="button"
-					className="ib"
-					onClick={() => setView({ name: 'config' })}
-					aria-label="Settings"
-					title="Settings"
-				>
-					<Settings className="size-4" />
-				</button>
-			</header>
+				{/* Screen-reader announcements: status transitions and agent-needs-input */}
+				<div role="status" aria-live="polite" className="sr">
+					{pendingAsk
+						? t('status.needsInput')
+						: isRunning
+							? t('status.agentRunning')
+							: status === 'completed'
+								? t('status.taskCompleted')
+								: isFailed
+									? t('status.taskFailed')
+									: status === 'stopped'
+										? t('status.taskStopped')
+										: ''}
+				</div>
 
-			{/* Task banner (only while running — afterwards the task appears as a user bubble) */}
-			{isRunning && currentTask && (
-				<div className="task">
-					<div className="tr">
-						<span className="lab">Task</span>
-						<span className="sp" />
-						<span className="meta">
-							Step {stepCount} / {maxSteps}
-						</span>
-						<CopyIconButton text={currentTask} label="Copy task" />
-					</div>
+				{/* Header */}
+				<header className="hd">
+					<LogoMark />
+					<span className="ttl">Page Agent</span>
+					<span className="sp" />
+					<StatusPill status={status} />
 					<button
 						type="button"
-						ref={taskTextRef}
-						className={cn('tt', taskClamped && 'tog', taskExpanded && 'open')}
-						onClick={
-							taskClamped ? () => setExpandedTask(taskExpanded ? null : currentTask) : undefined
-						}
-						aria-expanded={taskExpanded}
-						title={currentTask}
-					>
-						{currentTask}
-					</button>
-					<div className="prog">
-						<i style={{ width: `${progress}%` }} />
-					</div>
-				</div>
-			)}
-
-			{/* Content */}
-			{showEmptyState ? (
-				<>
-					<EmptyState onSuggest={suggest} />
-					<HomeLinks />
-				</>
-			) : (
-				<main ref={historyRef} className={cn('feed', isRunning && 'end fade')}>
-					{!isRunning && currentTask && <div className="usr">{currentTask}</div>}
-
-					{history.map((event: HistoricalEvent, index: number) => (
-						<EventCard
-							key={index}
-							event={event}
-							running={isRunning && index === lastStepIdx}
-							last={index === lastStepIdx && !activity}
-						/>
-					))}
-
-					{activity && <ActivityCard activity={activity} />}
-
-					{/* Result actions */}
-					{isFinished && resultText && (
-						<div className="acts" style={{ marginLeft: 0, gap: 8 }}>
-							<button
-								type="button"
-								className="btn g"
-								onClick={() => navigator.clipboard.writeText(resultText)}
-							>
-								<Copy className="size-3.5" /> Copy
-							</button>
-							<button type="button" className="btn g" onClick={saveResultAsFile}>
-								<Download className="size-3.5" /> Save .md
-							</button>
-							<span className="vr" />
-							<button
-								type="button"
-								className="ib"
-								onClick={() => runTask(currentTask)}
-								aria-label="Run again"
-								title="Run again"
-							>
-								<RotateCcw className="size-3.5" />
-							</button>
-							<button
-								type="button"
-								className="ib"
-								onClick={editTask}
-								aria-label="Edit task"
-								title="Edit task"
-							>
-								<Pencil className="size-3.5" />
-							</button>
-						</div>
-					)}
-
-					{/* Error actions */}
-					{isFailed && !resultText && (
-						<div className="acts" style={{ marginLeft: 0, gap: 8 }}>
-							<button type="button" className="btn lg p" onClick={() => runTask(currentTask)}>
-								Run again
-							</button>
-							<button type="button" className="btn lg" onClick={editTask}>
-								Edit task
-							</button>
-						</div>
-					)}
-				</main>
-			)}
-
-			{/* Composer */}
-			<footer className="cmp">
-				<div className={cn('box', isRunning && 'off')}>
-					<textarea
-						ref={textareaRef}
-						className="ta2"
-						rows={2}
-						placeholder={placeholder}
-						value={inputValue}
-						onChange={(e) => setInputValue(e.target.value)}
-						onKeyDown={handleKeyDown}
+						className="ib"
+						onClick={handleNewChat}
 						disabled={isRunning}
-					/>
-					<div className="cr">
-						{config?.model && <span className="chip">{config.model}</span>}
-						{!isRunning && <span className="kbd">Enter to send · Shift+Enter for newline</span>}
-						<span className="sp" />
-						{isRunning ? (
-							<button
-								type="button"
-								className="send stop"
-								onClick={handleStop}
-								aria-label="Stop task"
-								title="Stop task"
-							>
-								<Square className="size-3.5" /> Stop
-							</button>
-						) : (
-							<button
-								type="button"
-								className="send"
-								disabled={!inputValue.trim()}
-								onClick={() => handleSubmit()}
-								aria-label="Send"
-								title="Send"
-							>
-								<ArrowUp className="size-4" />
-							</button>
-						)}
+						aria-label={t('common.newChat')}
+						title={t('common.newChat')}
+					>
+						<Plus className="size-4" />
+					</button>
+					<button
+						type="button"
+						className="ib"
+						onClick={() => setView({ name: 'history' })}
+						aria-label={t('common.history')}
+						title={t('common.history')}
+					>
+						<History className="size-4" />
+					</button>
+					<button
+						type="button"
+						className="ib"
+						onClick={() => setView({ name: 'config' })}
+						aria-label={t('common.settings')}
+						title={t('common.settings')}
+					>
+						<Settings className="size-4" />
+					</button>
+				</header>
+
+				{/* Task banner (only while running — afterwards the task appears as a user bubble) */}
+				{isRunning && currentTask && (
+					<div className="task">
+						<div className="tr">
+							<span className="lab">{t('common.task')}</span>
+							<span className="sp" />
+							<span className="meta">
+								{t('chat.stepOf', { step: stepCount, max: maxSteps })}
+								{totalTokens > 0 && (
+									<>
+										{' '}
+										· {fmtTokens(totalTokens)} {t('chat.tok')}
+									</>
+								)}
+							</span>
+							<CopyIconButton text={currentTask} label={t('common.copyTask')} />
+						</div>
+						<button
+							type="button"
+							ref={taskTextRef}
+							className={cn('tt', taskClamped && 'tog', taskExpanded && 'open')}
+							onClick={
+								taskClamped ? () => setExpandedTask(taskExpanded ? null : currentTask) : undefined
+							}
+							aria-expanded={taskExpanded}
+							title={currentTask}
+						>
+							{currentTask}
+						</button>
+						<div className="prog">
+							<i style={{ width: `${progress}%` }} />
+						</div>
 					</div>
-				</div>
-			</footer>
-		</div>
+				)}
+
+				{/* Queued next task (submitted while the agent is running) */}
+				{queuedTask && (
+					<div className="qnext">
+						<span className="lab">{t('chat.queued')}</span>
+						<span className="qt">{queuedTask}</span>
+						<button
+							type="button"
+							className="ib"
+							onClick={() => setQueuedTask(null)}
+							aria-label={t('chat.cancelQueued')}
+							title={t('chat.cancelQueued')}
+						>
+							<X className="size-3.5" />
+						</button>
+					</div>
+				)}
+
+				{/* Content */}
+				{showEmptyState ? (
+					<>
+						<EmptyState onSuggest={suggest} />
+						<HomeLinks />
+					</>
+				) : (
+					<main ref={historyRef} className={cn('feed', isRunning && 'end fade')}>
+						{!isRunning && currentTask && <div className="usr">{currentTask}</div>}
+
+						{history.map((event: HistoricalEvent, index: number) => (
+							<EventCard
+								key={index}
+								event={event}
+								running={isRunning && index === lastStepIdx}
+								last={index === lastStepIdx && !activity}
+							/>
+						))}
+
+						{activity && <ActivityCard activity={activity} />}
+
+						{/* Result actions */}
+						{isFinished && resultText && (
+							<div className="acts" style={{ marginLeft: 0, gap: 8 }}>
+								<button
+									type="button"
+									className="btn g"
+									onClick={() => navigator.clipboard.writeText(resultText)}
+								>
+									<Copy className="size-3.5" /> {t('common.copy')}
+								</button>
+								<button type="button" className="btn g" onClick={saveResultAsFile}>
+									<Download className="size-3.5" /> {t('chat.saveMd')}
+								</button>
+								{totalTokens > 0 && (
+									<span className="chip">
+										{t('chat.tokens', { count: fmtTokens(totalTokens) })}
+									</span>
+								)}
+								<span className="vr" />
+								<button
+									type="button"
+									className="ib"
+									onClick={() => runTask(currentTask)}
+									aria-label={t('common.runAgain')}
+									title={t('common.runAgain')}
+								>
+									<RotateCcw className="size-3.5" />
+								</button>
+								<button
+									type="button"
+									className="ib"
+									onClick={editTask}
+									aria-label={t('common.editTask')}
+									title={t('common.editTask')}
+								>
+									<Pencil className="size-3.5" />
+								</button>
+							</div>
+						)}
+
+						{/* Error actions */}
+						{isFailed && !resultText && (
+							<div className="acts" style={{ marginLeft: 0, gap: 8 }}>
+								{isMaxStepsError && (
+									<button
+										type="button"
+										className="btn lg p"
+										onClick={() => runTask(`Continue: ${currentTask}`)}
+									>
+										{t('chat.continue')}
+									</button>
+								)}
+								<button
+									type="button"
+									className={cn('btn lg', !isMaxStepsError && 'p')}
+									onClick={() => runTask(currentTask)}
+								>
+									{t('common.runAgain')}
+								</button>
+								<button type="button" className="btn lg" onClick={editTask}>
+									{t('common.editTask')}
+								</button>
+							</div>
+						)}
+					</main>
+				)}
+
+				{/* Composer */}
+				<footer className="cmp">
+					{pendingAsk && (
+						<AskUserCard
+							kind={pendingAsk.kind}
+							question={pendingAsk.question}
+							onAnswer={answerAsk}
+						/>
+					)}
+					<div className={cn('box', isRunning && 'off')}>
+						<textarea
+							ref={textareaRef}
+							className="ta2"
+							rows={2}
+							placeholder={placeholder}
+							value={inputValue}
+							onChange={(e) => setInputValue(e.target.value)}
+							onKeyDown={handleKeyDown}
+						/>
+						<div className="cr">
+							{config?.model && <span className="chip">{config.model}</span>}
+							{!isRunning && <span className="kbd">{t('chat.enterHint')}</span>}
+							<span className="sp" />
+							{isRunning ? (
+								<button
+									type="button"
+									className="send stop"
+									onClick={handleStop}
+									aria-label={t('chat.stopTask')}
+									title={t('chat.stopTask')}
+								>
+									<Square className="size-3.5" /> {t('status.running')}
+								</button>
+							) : (
+								<button
+									type="button"
+									className="send"
+									disabled={!inputValue.trim()}
+									onClick={() => handleSubmit()}
+									aria-label={t('chat.send')}
+									title={t('chat.send')}
+								>
+									<ArrowUp className="size-4" />
+								</button>
+							)}
+						</div>
+					</div>
+				</footer>
+			</div>
+		</TProvider>
 	)
 }
