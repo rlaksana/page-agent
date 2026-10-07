@@ -80,9 +80,6 @@ export function ConfigPanel({ config, onSave, onClose }: ConfigPanelProps) {
 	const [disableNamedToolChoice, setDisableNamedToolChoice] = useState(
 		config?.disableNamedToolChoice ?? false
 	)
-	const [confirmSensitiveActions, setConfirmSensitiveActions] = useState(
-		config?.confirmSensitiveActions ?? false
-	)
 	const [blockedSites, setBlockedSites] = useState((config?.blockedSites ?? []).join('\n'))
 	const [viewportExpansion, setViewportExpansion] = useState<number | undefined>(
 		config?.viewportExpansion
@@ -110,7 +107,6 @@ export function ConfigPanel({ config, onSave, onClose }: ConfigPanelProps) {
 		setExperimentalLlmsTxt(config?.experimentalLlmsTxt ?? false)
 		setExperimentalIncludeAllTabs(config?.experimentalIncludeAllTabs ?? false)
 		setDisableNamedToolChoice(config?.disableNamedToolChoice ?? false)
-		setConfirmSensitiveActions(config?.confirmSensitiveActions ?? false)
 		setBlockedSites((config?.blockedSites ?? []).join('\n'))
 		setViewportExpansion(config?.viewportExpansion)
 	}
@@ -187,7 +183,6 @@ export function ConfigPanel({ config, onSave, onClose }: ConfigPanelProps) {
 				experimentalLlmsTxt,
 				experimentalIncludeAllTabs,
 				disableNamedToolChoice,
-				confirmSensitiveActions,
 				blockedSites: blockedSites.trim() ? blockedSites.split(/[\n,;\s]+/) : undefined,
 				viewportExpansion: typeof viewportExpansion === 'number' ? viewportExpansion : undefined,
 			})
@@ -448,19 +443,10 @@ export function ConfigPanel({ config, onSave, onClose }: ConfigPanelProps) {
 								inputMode="numeric"
 								placeholder="40"
 								min={1}
-								max={200}
 								value={maxSteps ?? ''}
 								onChange={(e) => setMaxSteps(e.target.value ? Number(e.target.value) : undefined)}
 							/>
 							<div className="hint">{t('settings.maxStepsHint')}</div>
-						</div>
-						<div className="swr">
-							<span>{t('settings.confirmSensitive')}</span>
-							<Switch
-								checked={confirmSensitiveActions}
-								onChange={setConfirmSensitiveActions}
-								label={t('settings.confirmSensitiveLabel')}
-							/>
 						</div>
 					</div>
 				</div>

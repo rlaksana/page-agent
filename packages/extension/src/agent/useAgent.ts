@@ -26,8 +26,6 @@ export interface AdvancedConfig {
 	disableNamedToolChoice?: boolean
 	/** Hosts the agent must never read or operate on */
 	blockedSites?: string[]
-	/** Ask before clicking elements whose text matches sensitive keywords */
-	confirmSensitiveActions?: boolean
 	/**
 	 * DOM extraction scope in px, honored by the content script via storage:
 	 * -1 = full page (default), 0 = viewport only, N = viewport expanded by N px.
@@ -39,10 +37,8 @@ export interface ExtConfig extends LLMConfig, AdvancedConfig {
 	language?: LanguagePreference
 }
 
-/** A question (or confirmation) the agent is waiting for the user to answer. */
+/** A question the agent is waiting for the user to answer (ask_user). */
 export interface PendingAsk {
-	/** 'ask' → free-text answer; 'confirm' → yes/no about a sensitive action */
-	kind: 'ask' | 'confirm'
 	question: string
 	respond: (answer: string) => void
 }
@@ -55,7 +51,7 @@ export interface UseAgentResult {
 	config: ExtConfig | null
 	/** False until the stored config finished loading; `config === null` after that means first run */
 	configLoaded: boolean
-	/** Non-null while the agent is blocked on `ask_user` / a sensitive-action confirmation */
+	/** Non-null while the agent is blocked on `ask_user` */
 	pendingAsk: PendingAsk | null
 	execute: (task: string) => Promise<ExecutionResult>
 	stop: () => void
@@ -131,7 +127,7 @@ export function useAgent(): UseAgentResult {
 			const signal = options?.signal
 			void chrome.storage.local.set({ agentAwaitingUser: true })
 			return new Promise<string>((resolve, reject) => {
-				setPendingAsk({ kind: 'ask', question, respond: resolve })
+				setPendingAsk({ question, respond: resolve })
 				const rejectAborted = () => {
 					// `signal.reason` is not guaranteed to be an Error object.
 					const reason = signal?.reason
@@ -149,17 +145,6 @@ export function useAgent(): UseAgentResult {
 				setPendingAsk(null)
 			})
 		}
-
-		// Sensitive-action confirmation (click on payment/delete-like elements)
-		// shares the same prompt surface as ask_user.
-		agent.onConfirmAction = (description) =>
-			new Promise<boolean>((resolve) => {
-				setPendingAsk({
-					kind: 'confirm',
-					question: description,
-					respond: (answer) => resolve(/^y(es)?$/i.test(answer)),
-				})
-			}).finally(() => setPendingAsk(null))
 
 		cleanupRef.current = () => {
 			agent.removeEventListener('statuschange', handleStatusChange)
@@ -258,7 +243,6 @@ export function useAgent(): UseAgentResult {
 			experimentalIncludeAllTabs,
 			disableNamedToolChoice,
 			blockedSites,
-			confirmSensitiveActions,
 			viewportExpansion,
 			...llmConfig
 		}: ExtConfig) => {
@@ -275,7 +259,6 @@ export function useAgent(): UseAgentResult {
 				experimentalIncludeAllTabs,
 				disableNamedToolChoice,
 				blockedSites,
-				confirmSensitiveActions,
 				viewportExpansion,
 			}
 			await chrome.storage.local.set({ advancedConfig })

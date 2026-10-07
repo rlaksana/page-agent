@@ -1,7 +1,7 @@
 import type { BrowserState } from '@page-agent/page-controller'
 
 import type { TabsController } from './TabsController'
-import { isSensitiveActionText, isUrlDenied } from './guards'
+import { isUrlDenied } from './guards'
 
 const PREFIX = '[RemotePageController]'
 
@@ -26,16 +26,6 @@ function sendMessage(message: {
  */
 export class RemotePageController {
 	tabsController: TabsController
-
-	/**
-	 * When true, clicking an element whose text matches a sensitive keyword
-	 * (see guards.SENSITIVE_ACTION_KEYWORDS) requires `onConfirmAction` to
-	 * resolve true before the click is sent to the page.
-	 */
-	confirmSensitiveActions = false
-
-	/** Asked when a sensitive action needs explicit user approval. */
-	onConfirmAction?: (description: string) => Promise<boolean>
 
 	constructor(tabsController: TabsController) {
 		this.tabsController = tabsController
@@ -140,30 +130,6 @@ export class RemotePageController {
 	}
 
 	async clickElement(...args: any[]): Promise<DomActionReturn> {
-		// Sensitive-action confirmation: inspect what we are about to click and
-		// ask the user when it matches a sensitive keyword (e.g. payment, delete).
-		const index = args[0]
-		if (
-			this.confirmSensitiveActions &&
-			typeof index === 'number' &&
-			this.onConfirmAction &&
-			isContentScriptAllowed(await this.getCurrentUrl())
-		) {
-			const info = await this.getElementText(index)
-			if (info?.success && typeof info.text === 'string' && isSensitiveActionText(info.text)) {
-				const allowed = await this.onConfirmAction(
-					`The agent wants to click "${info.text}". Allow this action?`
-				)
-				if (!allowed) {
-					return {
-						success: false,
-						message:
-							'❌ The user declined this action. Choose a different approach, or finish the task with done.',
-					}
-				}
-			}
-		}
-
 		const res = await this.remoteCallDomAction('click_element', args)
 		// @note may cause page navigation, wait for 1 second to ensure the page loading started
 		await new Promise((resolve) => setTimeout(resolve, 1000))

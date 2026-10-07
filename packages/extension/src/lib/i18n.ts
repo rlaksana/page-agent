@@ -50,10 +50,7 @@ const en = {
 	'chat.send': 'Send',
 	'chat.enterHint': 'Enter to send · Shift+Enter for newline',
 
-	// Ask user / confirmation
-	'ask.confirmTitle': 'Confirm before continuing',
-	'ask.decline': 'Decline',
-	'ask.proceed': 'Proceed',
+	// Ask user
 	'ask.title': 'The agent asks',
 	'ask.placeholder': 'Type your answer…',
 	'ask.yourAnswer': 'Your answer',
@@ -139,9 +136,7 @@ const en = {
 	'settings.langSystem': 'System',
 	'settings.responseLanguage': 'Response language',
 	'settings.maxSteps': 'Max steps',
-	'settings.maxStepsHint': 'Between 1 and 200.',
-	'settings.confirmSensitive': 'Confirm sensitive actions (payments, deletions…)',
-	'settings.confirmSensitiveLabel': 'Confirm sensitive actions',
+	'settings.maxStepsHint': 'Minimum 1. Leave empty for the default (40).',
 	'settings.access': 'Access',
 	'settings.userAuthToken': 'User auth token',
 	'settings.showToken': 'Show token',

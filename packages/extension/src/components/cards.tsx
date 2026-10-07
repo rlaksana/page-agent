@@ -474,16 +474,14 @@ function ErrorCard({ event }: { event: AgentErrorEvent }) {
 }
 
 /**
- * Prompt docked above the composer while the agent waits for the user:
- * free-text answer (`ask`) or a proceed/decline confirmation (`confirm`).
+ * Prompt docked above the composer while the agent waits for the user
+ * to answer a question (ask_user).
  */
 export function AskUserCard({
 	question,
-	kind,
 	onAnswer,
 }: {
 	question: string
-	kind: 'ask' | 'confirm'
 	onAnswer: (answer: string) => void
 }) {
 	const t = useT()
@@ -493,34 +491,6 @@ export function AskUserCard({
 	useEffect(() => {
 		inputRef.current?.focus({ preventScroll: true })
 	}, [])
-
-	if (kind === 'confirm') {
-		return (
-			<div className="askw">
-				<div className="askq">
-					<Hand className="size-3.5" />
-					<span>{t('ask.confirmTitle')}</span>
-				</div>
-				<div className="askt" role="question">
-					{question}
-				</div>
-				<div className="cr">
-					<span className="sp" />
-					<button type="button" className="btn g" onClick={() => onAnswer('no')}>
-						{t('ask.decline')}
-					</button>
-					<button
-						type="button"
-						className="send"
-						onClick={() => onAnswer('yes')}
-						aria-label={t('ask.proceed')}
-					>
-						<Check className="size-4" />
-					</button>
-				</div>
-			</div>
-		)
-	}
 
 	const submit = () => {
 		const text = value.trim()

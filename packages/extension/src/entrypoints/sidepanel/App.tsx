@@ -514,13 +514,7 @@ export default function App() {
 
 				{/* Composer */}
 				<footer className="cmp">
-					{pendingAsk && (
-						<AskUserCard
-							kind={pendingAsk.kind}
-							question={pendingAsk.question}
-							onAnswer={answerAsk}
-						/>
-					)}
+					{pendingAsk && <AskUserCard question={pendingAsk.question} onAnswer={answerAsk} />}
 					<div className={cn('box', isRunning && 'off')}>
 						<textarea
 							ref={textareaRef}

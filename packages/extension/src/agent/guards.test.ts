@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { isHostBlocked, isSensitiveActionText, parseBlockedSites } from './guards'
+import { isHostBlocked, parseBlockedSites } from './guards'
 
 describe('parseBlockedSites', () => {
 	it('splits on newlines, commas, and spaces; lowercases; keeps host only', () => {
@@ -50,18 +50,5 @@ describe('isHostBlocked', () => {
 		expect(isHostBlocked('https://example.com/', blocked)).toBe(false)
 		expect(isHostBlocked('not a url', blocked)).toBe(false)
 		expect(isHostBlocked('', [])).toBe(false)
-	})
-})
-
-describe('isSensitiveActionText', () => {
-	it('matches sensitive keywords on word boundaries, case-insensitively', () => {
-		expect(isSensitiveActionText('Pay now')).toBe(true)
-		expect(isSensitiveActionText('CONFIRM ORDER')).toBe(true)
-		expect(isSensitiveActionText('Delete account')).toBe(true)
-	})
-
-	it('does not match substrings inside unrelated words', () => {
-		expect(isSensitiveActionText('Papaya salad')).toBe(false)
-		expect(isSensitiveActionText('Read the documentation')).toBe(false)
 	})
 })

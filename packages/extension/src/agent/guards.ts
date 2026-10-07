@@ -1,8 +1,6 @@
 /**
  * Agent guard rails configured by the user:
  * - site denylist: hosts the agent must never read or operate on
- * - sensitive-action confirmation: clicks matching sensitive keywords
- *   require explicit user approval before they are sent to the page
  */
 
 /**
@@ -56,33 +54,4 @@ export function configureSiteGuard(blockedSites: string[] | undefined): void {
 /** Is the agent denied from operating on this URL by the user's denylist? */
 export function isUrlDenied(url: string | undefined): boolean {
 	return isHostBlocked(url ?? '', blockedHosts)
-}
-
-/**
- * Keywords (word-boundary matched, case-insensitive) that mark a click as
- * potentially irreversible or financially sensitive. Conservative list.
- */
-export const SENSITIVE_ACTION_KEYWORDS = [
-	'pay',
-	'payment',
-	'checkout',
-	'purchase',
-	'place order',
-	'order now',
-	'delete',
-	'remove',
-	'transfer',
-	'subscribe',
-	'confirm order',
-	'send money',
-]
-
-const SENSITIVE_RE = new RegExp(
-	`\\b(?:${SENSITIVE_ACTION_KEYWORDS.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`,
-	'i'
-)
-
-/** Pure: does the element text look like a sensitive (hard-to-reverse) action? */
-export function isSensitiveActionText(text: string): boolean {
-	return SENSITIVE_RE.test(text)
 }
