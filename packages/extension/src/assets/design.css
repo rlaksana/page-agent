@@ -1027,7 +1027,11 @@ a {
 .set {
 	flex: 1;
 	min-height: 0;
-	overflow: hidden;
+	/* x hidden, y scrollable: the settings content can exceed the viewport
+	   (Advanced sits below several long sections) — `hidden` alone made
+	   everything below the fold unreachable. */
+	overflow: hidden auto;
+	scrollbar-width: thin;
 	padding: 16px 14px;
 	display: flex;
 	flex-direction: column;
