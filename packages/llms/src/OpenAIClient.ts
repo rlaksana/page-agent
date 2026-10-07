@@ -3,7 +3,7 @@
  */
 import * as z from 'zod/v4'
 
-import { InvokeError, InvokeErrorTypes } from './errors'
+import { InvokeError, InvokeErrorTypes, parseRetryAfterMs } from './errors'
 import type {
 	InvokeOptions,
 	InvokeResult,
@@ -106,11 +106,13 @@ export class OpenAIClient implements LLMClient {
 				)
 			}
 			if (response.status === 429) {
-				throw new InvokeError(
+				const error = new InvokeError(
 					InvokeErrorTypes.RATE_LIMIT,
 					`Rate limit exceeded: ${errorMessage}`,
 					errorData
 				)
+				error.retryAfterMs = parseRetryAfterMs(response.headers.get('retry-after'))
+				throw error
 			}
 			if (response.status >= 500) {
 				throw new InvokeError(

@@ -54,6 +54,8 @@ export class LLM extends EventTarget {
 
 /**
  * Retry a function until it succeeds or reaches the maximum number of retries.
+ * Backoff: honors a server-provided `retryAfterMs` (from the Retry-After header),
+ * otherwise exponential — 250ms doubling per attempt, capped at 8s — plus jitter.
  */
 async function withRetry<T>(
 	fn: () => Promise<T>,
@@ -75,7 +77,9 @@ async function withRetry<T>(
 			console.debug('[LLM] retryable failure, will retry:', error)
 			settings.onRetry(attempt, error as Error)
 
-			await new Promise((resolve) => setTimeout(resolve, 100))
+			const retryAfterMs = (error as InvokeError).retryAfterMs
+			const delay = retryAfterMs ?? Math.min(8_000, 250 * 2 ** (attempt - 1)) + Math.random() * 250
+			await new Promise((resolve) => setTimeout(resolve, delay))
 		}
 	}
 }

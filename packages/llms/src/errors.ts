@@ -40,6 +40,8 @@ export class InvokeError extends Error {
 	type: InvokeErrorType
 	retryable: boolean
 	statusCode?: number
+	/** Server-advised wait before retrying, from the `Retry-After` header (ms). */
+	retryAfterMs?: number
 	/* raw error (provided if this error is caused by another error) */
 	rawError?: unknown
 	/* raw response from the API (provided if this error is caused by an API calling) */
@@ -53,4 +55,14 @@ export class InvokeError extends Error {
 		this.rawError = rawError
 		this.rawResponse = rawResponse
 	}
+}
+
+/** Parse a `Retry-After` header value (delay-seconds or HTTP-date) into milliseconds. */
+export function parseRetryAfterMs(value: string | null): number | undefined {
+	if (!value) return undefined
+	const seconds = Number(value)
+	if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000
+	const dateMs = Date.parse(value)
+	if (!Number.isNaN(dateMs)) return Math.max(0, dateMs - Date.now())
+	return undefined
 }

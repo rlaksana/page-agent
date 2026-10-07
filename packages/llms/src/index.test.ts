@@ -111,4 +111,49 @@ describe('LLM.invoke retry behavior', () => {
 		await expect(llm.invoke([], {}, signal)).resolves.toBe('ok')
 		expect(client.invoke).toHaveBeenCalledTimes(2)
 	})
+
+	it('waits for retryAfterMs (Retry-After) before retrying', async () => {
+		vi.useFakeTimers()
+		try {
+			const rateLimited = new InvokeError(InvokeErrorTypes.RATE_LIMIT, 'slow down')
+			rateLimited.retryAfterMs = 1_000
+			client.invoke.mockRejectedValueOnce(rateLimited).mockResolvedValueOnce('ok')
+
+			const promise = llm.invoke([], {}, signal)
+			await vi.advanceTimersByTimeAsync(0)
+			expect(client.invoke).toHaveBeenCalledOnce()
+
+			// Still inside the server-advised wait — no retry yet.
+			await vi.advanceTimersByTimeAsync(999)
+			expect(client.invoke).toHaveBeenCalledTimes(1)
+
+			await vi.advanceTimersByTimeAsync(1)
+			await expect(promise).resolves.toBe('ok')
+			expect(client.invoke).toHaveBeenCalledTimes(2)
+		} finally {
+			vi.useRealTimers()
+		}
+	})
+
+	it('uses exponential backoff with jitter when no Retry-After is given', async () => {
+		vi.useFakeTimers()
+		try {
+			const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout')
+			const retryable = new InvokeError(InvokeErrorTypes.NETWORK_ERROR, 'boom')
+			client.invoke.mockRejectedValueOnce(retryable).mockResolvedValueOnce('ok')
+
+			const promise = llm.invoke([], {}, signal)
+			await vi.advanceTimersByTimeAsync(0)
+
+			const delay = setTimeoutSpy.mock.calls.at(-1)![1]!
+			// Attempt 1: 250ms base + up to 250ms jitter.
+			expect(delay).toBeGreaterThanOrEqual(250)
+			expect(delay).toBeLessThanOrEqual(500)
+
+			await vi.advanceTimersByTimeAsync(delay)
+			await expect(promise).resolves.toBe('ok')
+		} finally {
+			vi.useRealTimers()
+		}
+	})
 })
