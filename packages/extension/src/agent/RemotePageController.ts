@@ -71,11 +71,21 @@ export class RemotePageController {
 				footer: '',
 			}
 		} else {
-			browserState = await sendMessage({
+			const res = await sendMessage({
 				type: 'PAGE_CONTROL',
 				action: 'get_browser_state',
 				targetTabId: this.currentTabId,
 			})
+			if (!res || res.success === false) {
+				// Common cause: the tab predates the last extension (re)load —
+				// Chrome does not re-inject content scripts into already-open tabs.
+				// Fail loudly instead of feeding the LLM a broken/empty state.
+				throw new Error(
+					`Cannot read the page (${res?.error ?? 'no response from content script'}). ` +
+						'Reload the tab and run the task again.'
+				)
+			}
+			browserState = res
 		}
 
 		const sum = await this.tabsController.summarizeTabs()
