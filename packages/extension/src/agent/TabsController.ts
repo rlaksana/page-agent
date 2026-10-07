@@ -1,4 +1,5 @@
 import { isContentScriptAllowed } from './RemotePageController'
+import { isUrlDenied } from './guards'
 
 const PREFIX = '[TabsController]'
 
@@ -116,7 +117,7 @@ export class TabsController {
 				payload: { tabId: this.initialTabId },
 			})
 
-			if (isContentScriptAllowed(info.url) && !info.pinned) {
+			if (isContentScriptAllowed(info.url) && !isUrlDenied(info.url) && !info.pinned) {
 				this.currentTabId = this.initialTabId
 
 				this.addTab({
@@ -134,6 +135,25 @@ export class TabsController {
 
 	async openNewTab(url: string, options: { signal?: AbortSignal } = {}): Promise<string> {
 		debug('openNewTab', url)
+
+		if (isUrlDenied(url)) {
+			throw new Error(
+				`Cannot open ${url}: this site is on the blocked list in the extension settings.`
+			)
+		}
+
+		// Reuse an existing tab with the same URL instead of stacking duplicates.
+		// Adopted tabs keep `isInitial` semantics: the user owns them, so they are
+		// never added to the run's tab group and never auto-closed.
+		const existing = await chrome.tabs.query({ url })
+		const match = existing.find((tab) => tab.id !== undefined && !tab.pinned)
+		if (match?.id != null) {
+			debug('openNewTab: reusing existing tab', match.id)
+			this.addTab({ id: match.id, isInitial: true, url: match.url })
+			await this.switchToTab(match.id)
+			await this.waitUntilTabLoaded(match.id, options)
+			return `✅ Switched to the existing tab ID ${match.id} already showing ${url}`
+		}
 
 		const result = await sendMessage({
 			type: 'TAB_CONTROL',
@@ -214,6 +234,80 @@ export class TabsController {
 		} else {
 			throw new Error(`Failed to close tab ID ${tabId}: ${result.error}`)
 		}
+	}
+
+	/**
+	 * Navigate the current tab to `url` in place (unlike `open_new_tab`, which
+	 * opens a separate tab). Waits until the navigation has settled.
+	 */
+	async navigateCurrentTab(url: string, options: { signal?: AbortSignal } = {}): Promise<string> {
+		debug('navigateCurrentTab', url)
+		if (!this.currentTabId) {
+			throw new Error('No current tab to navigate. Use open_new_tab first.')
+		}
+
+		if (isUrlDenied(url)) {
+			throw new Error(
+				`Cannot navigate to ${url}: this site is on the blocked list in the extension settings.`
+			)
+		}
+
+		const tabId = this.currentTabId
+
+		const result = await sendMessage({
+			type: 'TAB_CONTROL',
+			action: 'navigate_tab',
+			payload: { tabId, url },
+		})
+		if (!result?.success) {
+			throw new Error(`Failed to navigate to ${url}: ${result?.error}`)
+		}
+
+		// chrome.tabs.update can resolve while the tab still reports `complete`
+		// from the previous page; give the navigation a moment to start before
+		// waiting on the load state.
+		await sleep(300)
+		await this.waitUntilTabLoaded(tabId, options)
+
+		return `✅ Navigated current tab to ${url}`
+	}
+
+	/** Go back in the current tab's session history. */
+	async goBack(): Promise<string> {
+		debug('goBack')
+		if (!this.currentTabId) throw new Error('No current tab to navigate back.')
+		const tabId = this.currentTabId
+
+		const result = await sendMessage({ type: 'TAB_CONTROL', action: 'go_back', payload: { tabId } })
+		if (!result?.success) {
+			throw new Error(`Failed to go back: ${result?.error}`)
+		}
+
+		await sleep(300)
+		await this.waitUntilTabLoaded(tabId)
+
+		return '✅ Went back to the previous page.'
+	}
+
+	/** Reload the current tab (e.g. to recover an unreachable content script). */
+	async reloadTab(options: { signal?: AbortSignal } = {}): Promise<string> {
+		debug('reloadTab')
+		if (!this.currentTabId) throw new Error('No current tab to reload.')
+		const tabId = this.currentTabId
+
+		const result = await sendMessage({
+			type: 'TAB_CONTROL',
+			action: 'reload_tab',
+			payload: { tabId },
+		})
+		if (!result?.success) {
+			throw new Error(`Failed to reload tab: ${result?.error}`)
+		}
+
+		await sleep(300)
+		await this.waitUntilTabLoaded(tabId, options)
+
+		return '✅ Reloaded the current tab.'
 	}
 
 	private async createTabGroup(tabIds: number[]) {
@@ -468,6 +562,9 @@ export type TabAction =
 	| 'get_active_tab'
 	| 'get_tab_info'
 	| 'open_new_tab'
+	| 'navigate_tab'
+	| 'go_back'
+	| 'reload_tab'
 	| 'create_tab_group'
 	| 'update_tab_group'
 	| 'add_tab_to_group'
@@ -495,6 +592,8 @@ type TabGroupColor = (typeof TAB_GROUP_COLORS)[number]
 function randomColor(): TabGroupColor {
 	return TAB_GROUP_COLORS[Math.floor(Math.random() * TAB_GROUP_COLORS.length)]
 }
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
 /**
  * Wait until condition becomes true

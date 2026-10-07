@@ -93,6 +93,50 @@ export function handleTabControlMessage(
 			return true // async response
 		}
 
+		case 'navigate_tab': {
+			debug('navigate_tab', payload)
+			chrome.tabs
+				.update(payload.tabId, { url: payload.url })
+				.then(() => {
+					sendResponse({ success: true })
+				})
+				.catch((error) => {
+					sendResponse({ error: error instanceof Error ? error.message : String(error) })
+				})
+			return true // async response
+		}
+
+		case 'go_back': {
+			debug('go_back', payload)
+			// goBack is Chrome 144+; guard so the error is actionable on older targets.
+			if (typeof chrome.tabs.goBack !== 'function') {
+				sendResponse({ error: 'chrome.tabs.goBack is not supported in this browser.' })
+				return
+			}
+			chrome.tabs
+				.goBack(payload.tabId)
+				.then(() => {
+					sendResponse({ success: true })
+				})
+				.catch((error) => {
+					sendResponse({ error: error instanceof Error ? error.message : String(error) })
+				})
+			return true // async response
+		}
+
+		case 'reload_tab': {
+			debug('reload_tab', payload)
+			chrome.tabs
+				.reload(payload.tabId)
+				.then(() => {
+					sendResponse({ success: true })
+				})
+				.catch((error) => {
+					sendResponse({ error: error instanceof Error ? error.message : String(error) })
+				})
+			return true // async response
+		}
+
 		case 'create_tab_group': {
 			debug('create_tab_group', payload)
 			chrome.tabs

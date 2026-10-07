@@ -3,6 +3,9 @@
  *
  * These tools allow the agent to manage multiple browser tabs:
  * - open_new_tab: Open a new tab and set it as current
+ * - go_to_url: Navigate the current tab in place
+ * - go_back: Go back in the current tab's history
+ * - reload_page: Reload the current tab
  * - switch_to_tab: Switch to an existing tab
  * - close_tab: Close a tab (optionally switch to another)
  */
@@ -36,6 +39,51 @@ export function createTabTools(tabsController: TabsController): Record<string, T
 					return await tabsController.openNewTab(url, { signal })
 				} catch (error) {
 					// Let cancellation propagate instead of masking it as a tool failure.
+					if (signal.aborted) throw error
+					return `❌ Failed: ${error instanceof Error ? error.message : String(error)}`
+				}
+			},
+		},
+
+		go_to_url: {
+			description:
+				'Navigate the CURRENT tab to the specified URL. Unlike open_new_tab, the tab stays in place and keeps its session history.',
+			inputSchema: z.object({
+				url: z.string().describe('The URL to navigate the current tab to'),
+			}),
+			execute: async (input: unknown, { signal }: ToolContext) => {
+				const { url } = input as { url: string }
+				try {
+					return await tabsController.navigateCurrentTab(url, { signal })
+				} catch (error) {
+					// Let cancellation propagate instead of masking it as a tool failure.
+					if (signal.aborted) throw error
+					return `❌ Failed: ${error instanceof Error ? error.message : String(error)}`
+				}
+			},
+		},
+
+		go_back: {
+			description: 'Go back to the previous page in the current tab history.',
+			inputSchema: z.object({}),
+			execute: async (_input: unknown, { signal }: ToolContext) => {
+				try {
+					return await tabsController.goBack()
+				} catch (error) {
+					if (signal.aborted) throw error
+					return `❌ Failed: ${error instanceof Error ? error.message : String(error)}`
+				}
+			},
+		},
+
+		reload_page: {
+			description:
+				'Reload the current page. Use this to recover when the page is reported as unreadable or not loaded.',
+			inputSchema: z.object({}),
+			execute: async (_input: unknown, { signal }: ToolContext) => {
+				try {
+					return await tabsController.reloadTab({ signal })
+				} catch (error) {
 					if (signal.aborted) throw error
 					return `❌ Failed: ${error instanceof Error ? error.message : String(error)}`
 				}
