@@ -21,6 +21,9 @@ export class OpenAIClient implements LLMClient {
 	config: ResolvedLLMConfig
 	private fetch: typeof globalThis.fetch
 
+	/** Hard ceiling per HTTP request (ms): hang → retryable error, not a frozen loop. */
+	private static readonly REQUEST_TIMEOUT_MS = 120_000
+
 	constructor(config: ResolvedLLMConfig) {
 		this.config = config
 		this.fetch = config.customFetch
@@ -70,9 +73,13 @@ export class OpenAIClient implements LLMClient {
 		}
 		const finalRequestBody = transformedBody ?? requestBody
 
-		// 2. Call API
+		// 2. Call API — with a hard per-request ceiling: a hung endpoint becomes
+		// a retryable NETWORK_ERROR instead of freezing the loop forever.
 		let response: Response
 		try {
+			const requestSignal = abortSignal
+				? AbortSignal.any([abortSignal, AbortSignal.timeout(OpenAIClient.REQUEST_TIMEOUT_MS)])
+				: AbortSignal.timeout(OpenAIClient.REQUEST_TIMEOUT_MS)
 			response = await this.fetch(`${this.config.baseURL}/chat/completions`, {
 				method: 'POST',
 				headers: {
@@ -80,10 +87,17 @@ export class OpenAIClient implements LLMClient {
 					...(this.config.apiKey && { Authorization: `Bearer ${this.config.apiKey}` }),
 				},
 				body: JSON.stringify(finalRequestBody),
-				signal: abortSignal,
+				signal: requestSignal,
 			})
 		} catch (error: unknown) {
 			if ((error as any)?.name === 'AbortError') throw error
+			if ((error as any)?.name === 'TimeoutError') {
+				throw new InvokeError(
+					InvokeErrorTypes.NETWORK_ERROR,
+					`Request timed out after ${OpenAIClient.REQUEST_TIMEOUT_MS / 1000}s`,
+					error
+				)
+			}
 			console.error(error)
 			throw new InvokeError(InvokeErrorTypes.NETWORK_ERROR, 'Network request failed', error)
 		}

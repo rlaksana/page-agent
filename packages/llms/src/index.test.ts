@@ -156,4 +156,66 @@ describe('LLM.invoke retry behavior', () => {
 			vi.useRealTimers()
 		}
 	})
+
+	it('caps a server-advised Retry-After at 60 seconds', async () => {
+		vi.useFakeTimers()
+		try {
+			const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout')
+			const rateLimited = new InvokeError(InvokeErrorTypes.RATE_LIMIT, 'slow down')
+			rateLimited.retryAfterMs = 3_600_000
+			client.invoke.mockRejectedValueOnce(rateLimited).mockResolvedValueOnce('ok')
+
+			const promise = llm.invoke([], {}, signal)
+			await vi.advanceTimersByTimeAsync(0)
+			const delay = setTimeoutSpy.mock.calls.at(-1)![1]!
+			expect(delay).toBeLessThanOrEqual(60_250)
+			await vi.advanceTimersByTimeAsync(delay)
+			await expect(promise).resolves.toBe('ok')
+		} finally {
+			vi.useRealTimers()
+		}
+	})
+
+	it('cuts the retry wait short when aborted', async () => {
+		vi.useFakeTimers()
+		try {
+			const controller = new AbortController()
+			const retryable = new InvokeError(InvokeErrorTypes.NETWORK_ERROR, 'boom')
+			client.invoke.mockRejectedValue(retryable)
+
+			const promise = llm.invoke([], {}, controller.signal)
+			await vi.advanceTimersByTimeAsync(0)
+			controller.abort()
+			await expect(promise).rejects.toMatchObject({ name: 'AbortError' })
+		} finally {
+			vi.useRealTimers()
+		}
+	})
+
+	it('tells the model what was rejected on retry so it can self-correct', async () => {
+		const retryable = new InvokeError(InvokeErrorTypes.INVALID_TOOL_ARGS, 'bad args')
+		client.invoke.mockRejectedValueOnce(retryable).mockResolvedValueOnce('ok')
+
+		await expect(llm.invoke([{ role: 'user', content: 'do it' }], {}, signal)).resolves.toBe('ok')
+		const secondCall = client.invoke.mock.calls.at(-1)![0] as unknown as { content: string }[]
+		expect(secondCall).toHaveLength(2)
+		expect(secondCall[1].content).toContain('rejected')
+		expect(secondCall[1].content).toContain('invalid_tool_args')
+	})
+
+	it('maps a hung request (TimeoutError) to a retryable NETWORK_ERROR', async () => {
+		const hungFetch = vi.fn().mockRejectedValue(new DOMException('timed out', 'TimeoutError'))
+		const timedLLM = new LLM({
+			baseURL: 'http://test.local/v1',
+			model: 'gpt-5',
+			maxRetries: 0,
+			customFetch: hungFetch as unknown as typeof fetch,
+		})
+
+		await expect(timedLLM.invoke([], {}, signal)).rejects.toMatchObject({
+			type: InvokeErrorTypes.NETWORK_ERROR,
+			retryable: true,
+		})
+		expect(hungFetch).toHaveBeenCalledOnce()
+	})
 })
