@@ -149,7 +149,7 @@ const pageInfo = await this.pageController.getPageInfo()
 
 - **Framework**: Vitest (unit tests only for now; future E2E goes to `packages/e2e/` with Playwright)
 - **Location**: co-located, `src/foo.test.ts` next to `src/foo.ts`
-- **Coverage**: `packages/llms` (full suite), `packages/extension` (`constants.test.ts`, `TabsController.test.ts`), `packages/core`, `packages/page-controller`, `packages/ui`, and `packages/mcp` (JS, hub-bridge integration tests). Other gaps fill in incrementally.
+- **Coverage**: `packages/llms` (full suite), `packages/extension` (`constants.test.ts`, `guards.test.ts`, `TabsController.test.ts`), `packages/core`, `packages/page-controller`, `packages/ui`, and `packages/mcp` (JS, hub-bridge integration tests). Other gaps fill in incrementally.
 - **Adding tests to a new package**: create `vitest.config.ts` in the package and add a `"test": "vitest run"` script. Root `npm test` and `node scripts/ci.js` pick it up through npm workspaces.
 - **Template**: See @page-agent/llms
 
@@ -161,20 +161,22 @@ cd packages/llms && npx vitest      # watch mode in one package
 
 ### Extension (`packages/extension/`)
 
-| File                          | Description                                                             |
-| ----------------------------- | ----------------------------------------------------------------------- |
-| `src/agent/useAgent.ts`       | React hook wiring `MultiPageAgent` with persisted config                |
-| `src/agent/constants.ts`      | Stored-config migrations (`migrateLegacyEndpoint`, `migrateMaxRetries`) |
-| `src/agent/MultiPageAgent.ts` | Long-lived page-agent wrapper with message-passing IPC                  |
-| `src/components/cards.tsx`    | Step / result / retry card renderers                                    |
+| File                          | Description                                                                                                                             |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/agent/useAgent.ts`       | React hook wiring `MultiPageAgent` with persisted config; persists finished sessions to IndexedDB here so hub/MCP runs are recorded too |
+| `src/agent/constants.ts`      | Stored-config migrations (`migrateLegacyEndpoint`, `migrateMaxRetries`)                                                                 |
+| `src/agent/MultiPageAgent.ts` | Long-lived page-agent wrapper with message-passing IPC                                                                                  |
+| `src/components/cards.tsx`    | Step / result / retry card renderers                                                                                                    |
 
 **Stored-config migration pattern.** When library defaults bump (e.g. `maxRetries` 2 → 10 in commit `85b0087`) and the extension persists `LLMConfig` to `chrome.storage.local`, the stored config keeps the old value (the parse fallback only fires when the field is `undefined`). Fix: add a pure `migrate*` helper in `constants.ts` that returns the same reference when no migration is needed and a new object without the stale field otherwise; call it from `useAgent.ts` storage load and rewrite storage when the reference changes. Reference-identity (`!==`) is the contract that drives the rewrite.
 
-**Sidepanel design system.** The sidepanel views (`App.tsx`, `cards.tsx`, `misc.tsx`, `ConfigPanel.tsx`, `HistoryList/Detail.tsx`) are styled with semantic classes from `src/assets/design.css` (hand-written CSS; tokens bound to `:root` / `:root.dark`; Geist variable fonts in `src/assets/fonts/`) — **not** Tailwind utilities. Tailwind remains only for icon sizing (`size-3.5` etc.) and the hub entry, which keeps shadcn/ui. `misc.tsx` exports `Logo`/`StatusDot`/`MotionOverlay` still used by the hub — do not remove them. `main.tsx` must import `design.css` _after_ `index.css` so its element-level resets win over Tailwind preflight.
+**Sidepanel design system.** The sidepanel views (`App.tsx`, `cards.tsx`, `misc.tsx`, `ConfigPanel.tsx`, `HistoryList/Detail.tsx`) are styled with semantic classes from `src/assets/design.css` (hand-written CSS; tokens bound to `:root` / `:root.dark`; Geist variable fonts in `src/assets/fonts/`) — **not** Tailwind utilities. Tailwind remains only for icon sizing (`size-3.5` etc.) and the hub entry, which keeps shadcn/ui. `misc.tsx` exports `Logo`/`StatusDot`/`MotionOverlay` still used by the hub — do not remove them. `main.tsx` must import `design.css` _after_ `index.css` so its element-level resets win over Tailwind preflight. UI strings come from `src/lib/i18n.ts` (`useT()` keyed lookups); the sidepanel UI is English-only by requirement — the agent's response language is a separate setting that follows the task language.
 
 **Sidepanel Lifecycle & Tab Group Cleanup.** In Chrome MV3, closing the sidepanel via the `X` button does not destroy the document; it flips `document.visibilityState` to `hidden`. React does not unmount, so `useEffect` cleanup and `TabsController.dispose()` are unreliable during close. Reliable cleanup must trigger via `visibilitychange` (when `visibilityState === 'visible'`) and on App mount. Tab group cleanup uses `chrome.tabs.ungroup(tabIds)` (empty groups auto-delete in Chrome) because `@types/chrome` does not expose `chrome.tabGroups.remove()`. Tab groups are run-scoped: created lazily when the agent opens its first new tab (the user's initial tab is never grouped), and released via `TabsController.removeTabGroup()` when the status leaves `running`.
 
 **Extension IPC routing.** Background runtime messages route by type: `TAB_CONTROL` → `handleTabControlMessage` (`TabsController.background.ts`), `PAGE_CONTROL` → `handlePageControlMessage` (`RemotePageController.background.ts`, forwarded to the content script of `message.targetTabId`). The last hop (`chrome.tabs.sendMessage`) fails with "Could not establish connection. Receiving end does not exist" when the target tab predates the last extension (re)load — Chrome does not re-inject content scripts into already-open tabs. `getBrowserState` turns that failure into an actionable "Reload the tab" error instead of feeding the LLM a broken state; keep that failure loud.
+
+**DOM extraction scope.** The content script constructs `PageController` with `viewportExpansion` read from `advancedConfig` in `chrome.storage.local`: `-1` = full page (default), `0` = viewport only, `N` = viewport + N px. Keep full-page as the default — a viewport-only value silently blinds the agent to off-screen content (an earlier build hardcoded `400` and was reverted for exactly that reason).
 
 **Cross-task conversation context.** `PageAgentCore` keeps finished turns (`#conversation`: task + final result) and injects them into prompts as `<previous_conversation>`, so follow-up tasks in the same chat carry prior context; `startNewChat()` clears it (sidepanel: the `+` New chat button). `execute()` still resets `history` per task — only the conversation turns survive across tasks.
 
