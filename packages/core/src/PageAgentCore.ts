@@ -16,6 +16,7 @@ import type {
 	AgentReflection,
 	AgentStatus,
 	AgentStepEvent,
+	ConversationTurn,
 	ExecutionResult,
 	HistoricalEvent,
 	MacroToolInput,
@@ -90,6 +91,8 @@ export class PageAgentCore extends EventTarget {
 	 */
 	#abortController = new AbortController()
 	#observations: string[] = []
+	/** Finished task turns, injected into prompts so follow-up tasks keep conversation context */
+	#conversation: ConversationTurn[] = []
 
 	/** Resolves when the current run has fully settled. Awaited by `stop()`. */
 	#running: Promise<void> = Promise.resolve()
@@ -204,6 +207,14 @@ export class PageAgentCore extends EventTarget {
 	}
 
 	/**
+	 * Forget all previous task turns: the next task starts without
+	 * conversation context. Called by UIs when the user starts a new chat.
+	 */
+	startNewChat(): void {
+		this.#conversation = []
+	}
+
+	/**
 	 * external errors (pre-checks/config/hooks) will threw;
 	 * agent errors will be caught and added to history, and return a failed result
 	 */
@@ -241,6 +252,7 @@ export class PageAgentCore extends EventTarget {
 		let step = 0
 		let taskResult: ExecutionResult
 		let finalStatus: AgentStatus = 'error'
+		const prevResult = this.#lastResult
 
 		await suppress(() => this.pageController.showMask())
 
@@ -371,6 +383,17 @@ export class PageAgentCore extends EventTarget {
 			this.#abortController.abort()
 			resolveRunning()
 			this.#setStatus(finalStatus)
+
+			// Record the finished turn as context for follow-up tasks. The
+			// identity check skips external-error paths that produced no fresh
+			// result (#lastResult still holds the previous run's value).
+			if (this.#lastResult && this.#lastResult !== prevResult) {
+				this.#conversation.push({
+					task,
+					result: this.#lastResult.data,
+					success: this.#lastResult.success,
+				})
+			}
 		}
 	}
 
@@ -604,6 +627,23 @@ export class PageAgentCore extends EventTarget {
 		// <instructions> (optional)
 
 		prompt += await this.#getInstructions()
+
+		// <previous_conversation> (optional) — cross-task context within the same chat
+		// ponytail: carries only task + final result per turn; add per-step
+		// history if follow-ups measurably miss earlier details.
+
+		if (this.#conversation.length > 0) {
+			prompt += '<previous_conversation>\n'
+			prompt +=
+				'Earlier requests in this conversation and your final results (oldest first). The current request may refer to them.\n'
+			this.#conversation.forEach((turn, i) => {
+				prompt += `<turn_${i + 1}>\n`
+				prompt += `User request: ${turn.task}\n`
+				prompt += `Your result: ${turn.success ? '' : '[not completed] '}${turn.result}\n`
+				prompt += `</turn_${i + 1}>\n`
+			})
+			prompt += '</previous_conversation>\n\n'
+		}
 
 		// <agent_state>
 		//  - <user_request>

@@ -283,3 +283,13 @@ export interface ExecutionResult {
 	data: string
 	history: HistoricalEvent[]
 }
+
+/**
+ * A finished task turn, kept as cross-task context for follow-up tasks
+ * in the same conversation (until cleared via `startNewChat()`).
+ */
+export interface ConversationTurn {
+	task: string
+	result: string
+	success: boolean
+}

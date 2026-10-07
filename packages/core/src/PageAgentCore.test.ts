@@ -117,6 +117,54 @@ async function startBlockedTask(
 	return { result }
 }
 
+describe('PageAgentCore conversation context', () => {
+	function lastRequestMessages(fetchMock: ReturnType<typeof createFetchMock>): string {
+		const call = fetchMock.mock.calls.at(-1)
+		const body = JSON.parse(call?.[1]?.body as string)
+		return JSON.stringify(body.messages)
+	}
+
+	it('carries the previous task and result into the next task prompt', async () => {
+		const fetchMock = createFetchMock()
+			.mockResolvedValueOnce(doneResponse('first result'))
+			.mockResolvedValueOnce(doneResponse('second result'))
+		const agent = createAgent(fetchMock)
+
+		await agent.execute('first task')
+		await agent.execute('second task')
+
+		const messages = lastRequestMessages(fetchMock)
+		expect(messages).toContain('<previous_conversation>')
+		expect(messages).toContain('User request: first task')
+		expect(messages).toContain('Your result: first result')
+	})
+
+	it('marks failed turns as not completed', async () => {
+		const fetchMock = createFetchMock()
+			.mockResolvedValueOnce(doneResponse('gave up', false))
+			.mockResolvedValueOnce(doneResponse('done'))
+		const agent = createAgent(fetchMock)
+
+		await agent.execute('failing task')
+		await agent.execute('next task')
+
+		expect(lastRequestMessages(fetchMock)).toContain('Your result: [not completed] gave up')
+	})
+
+	it('does not carry context after startNewChat', async () => {
+		const fetchMock = createFetchMock()
+			.mockResolvedValueOnce(doneResponse('first result'))
+			.mockResolvedValueOnce(doneResponse('second result'))
+		const agent = createAgent(fetchMock)
+
+		await agent.execute('first task')
+		agent.startNewChat()
+		await agent.execute('second task')
+
+		expect(lastRequestMessages(fetchMock)).not.toContain('<previous_conversation>')
+	})
+})
+
 describe.concurrent('PageAgentCore lifecycle', () => {
 	describe('normal execution', () => {
 		it('runs a task to natural completion', async () => {
