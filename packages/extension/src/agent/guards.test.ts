@@ -17,6 +17,14 @@ describe('parseBlockedSites', () => {
 		expect(parseBlockedSites('  \n  ')).toEqual([])
 		expect(parseBlockedSites(['a.com', ''])).toEqual(['a.com'])
 	})
+
+	it('canonicalizes entries: ports, userinfo, paths, and trailing dots', () => {
+		expect(
+			parseBlockedSites(
+				'bank.com:8080\nuser@bank.com\nhttps://shop.example.com/cart?q=1\nBANK.com.'
+			)
+		).toEqual(['bank.com', 'bank.com', 'shop.example.com', 'bank.com'])
+	})
 })
 
 describe('isHostBlocked', () => {
@@ -31,6 +39,11 @@ describe('isHostBlocked', () => {
 	it('ignores hosts that merely contain the blocked string', () => {
 		expect(isHostBlocked('https://bank.com.evil.io/', blocked)).toBe(false)
 		expect(isHostBlocked('https://notbank.com/', blocked)).toBe(false)
+	})
+
+	it('blocks hosts with a trailing root dot (DNS-equivalent bypass)', () => {
+		expect(isHostBlocked('https://bank.com./login', blocked)).toBe(true)
+		expect(isHostBlocked('https://sub.bank.com./x', blocked)).toBe(true)
 	})
 
 	it('allows unlisted hosts and is safe on invalid URLs', () => {

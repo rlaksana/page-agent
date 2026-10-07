@@ -5,21 +5,30 @@
  *   require explicit user approval before they are sent to the page
  */
 
-/** Pure: extract hostnames from free-form user input (newlines, commas, or spaces). */
+/**
+ * Canonicalize a host entry or URL to a comparable hostname: parsed through
+ * URL (drops port/userinfo/path), lowercased, trailing root dot stripped
+ * (DNS treats `bank.com.` like `bank.com` — without this, a trailing dot
+ * bypasses the denylist). Returns null for empty or unparseable input.
+ */
+function canonicalHost(entry: string): string | null {
+	const trimmed = entry.trim().toLowerCase()
+	if (!trimmed) return null
+	let hostname: string
+	try {
+		hostname = new URL(trimmed.includes('://') ? trimmed : `http://${trimmed}`).hostname
+	} catch {
+		return null
+	}
+	const normalized = hostname.replace(/\.$/, '')
+	return normalized || null
+}
+
+/** Pure: extract canonical hostnames from free-form user input (newlines, commas, or spaces). */
 export function parseBlockedSites(input: string | string[] | undefined): string[] {
 	if (!input) return []
 	const raw = Array.isArray(input) ? input : input.split(/[\n,;\s]+/)
-	return raw
-		.map(
-			(entry) =>
-				entry
-					.trim()
-					.toLowerCase()
-					// Allow pasting full URLs — keep only the host part.
-					.replace(/^https?:\/\//, '')
-					.split('/')[0]
-		)
-		.filter((host) => host.length > 0)
+	return raw.map(canonicalHost).filter((host): host is string => host !== null)
 }
 
 /** Pure: is `url`'s host the blocked host itself or a subdomain of it? */
@@ -31,7 +40,10 @@ export function isHostBlocked(url: string, blockedHosts: string[]): boolean {
 	} catch {
 		return false
 	}
-	return blockedHosts.some((blocked) => hostname === blocked || hostname.endsWith(`.${blocked}`))
+	const normalized = hostname.replace(/\.$/, '')
+	return blockedHosts.some(
+		(blocked) => normalized === blocked || normalized.endsWith(`.${blocked}`)
+	)
 }
 
 let blockedHosts: string[] = []
