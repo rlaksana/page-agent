@@ -40,7 +40,10 @@ export function initPageController() {
 					typeof advancedConfig.viewportExpansion === 'number'
 						? advancedConfig.viewportExpansion
 						: DEFAULT_VIEWPORT_EXPANSION
-				return new PageController({ enableMask: false, viewportExpansion })
+				const pc = new PageController({ enableMask: false, viewportExpansion })
+				// Keep the module var in sync: the poll's hide/reset branches use it, not the promise.
+				pageController = pc
+				return pc
 			})()
 			// Allow a retry after a failed init (e.g. transient storage error).
 			pcPromise.catch(() => {
