@@ -1679,7 +1679,9 @@ export default (
 						}
 					}
 				} catch (e) {
-					console.warn('Unable to access iframe:', e)
+					// String(e): the extension error collector stringifies args, so a raw
+					// DOMException shows up as the unreadable "[object DOMException]".
+					console.warn('Unable to access iframe:', String(e))
 				}
 			}
 			// Handle rich text editors and contenteditable elements
