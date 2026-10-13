@@ -150,7 +150,7 @@ const pageInfo = await this.pageController.getPageInfo()
 
 - **Framework**: Vitest (unit tests only for now; future E2E goes to `packages/e2e/` with Playwright)
 - **Location**: co-located, `src/foo.test.ts` next to `src/foo.ts`
-- **Coverage**: `packages/llms` (full suite), `packages/extension` (`constants.test.ts`, `guards.test.ts`, `TabsController.test.ts`), `packages/core`, `packages/page-controller`, `packages/ui`, and `packages/mcp` (JS, hub-bridge integration tests). Other gaps fill in incrementally.
+- **Coverage**: `packages/llms` (full suite), `packages/extension` (`constants.test.ts`, `guards.test.ts`, `TabsController.test.ts`, `hub-ws.test.ts`), `packages/core`, `packages/page-controller`, `packages/ui`, and `packages/mcp` (JS, hub-bridge integration tests). Other gaps fill in incrementally.
 - **Adding tests to a new package**: create `vitest.config.ts` in the package and add a `"test": "vitest run"` script. Root `npm test` and `node scripts/ci.js` pick it up through npm workspaces.
 - **Template**: See @page-agent/llms
 
@@ -178,6 +178,8 @@ cd packages/llms && npx vitest      # watch mode in one package
 **Simulator mask lifecycle.** The content-script mask is storage-polled, not IPC-driven: `RemotePageController.content.ts` polls `isAgentRunning` + `agentHeartbeat` + `agentAwaitingUser` + `currentTabId` every 500ms and shows/hides the mask from that. The show path creates the `PageController` lazily via `getPC()`; the module-level `pageController` variable must stay assigned to that same instance — the hide/reset branches read the variable, not the promise. A drift between the two silently kills every mask-release path (task end, tab switch, `ask_user`).
 
 **Extension IPC routing.** Background runtime messages route by type: `TAB_CONTROL` → `handleTabControlMessage` (`TabsController.background.ts`), `PAGE_CONTROL` → `handlePageControlMessage` (`RemotePageController.background.ts`, forwarded to the content script of `message.targetTabId`). The last hop (`chrome.tabs.sendMessage`) fails with "Could not establish connection. Receiving end does not exist" when the target tab predates the last extension (re)load — Chrome does not re-inject content scripts into already-open tabs. `getBrowserState` turns that failure into an actionable "Reload the tab" error instead of feeding the LLM a broken state; keep that failure loud.
+
+**Hub tab lifecycle.** `OPEN_HUB` (sent by the MCP launcher page, `packages/mcp/src/launcher.html`) opens/updates the hub tab in the background (`active: false`, at the launcher's slot) — activating it would yank the user's window to the front on every MCP start. `HubWs` in `hub-ws.ts` auto-reconnects every 2s; the `#stopped` flag keeps the close event fired by `disconnect()` itself from scheduling a zombie retry. Cross-package contract: the 5s grace in `packages/mcp/src/index.js` (`openLauncherWhenHubAbsent`) skips the launcher when a leftover hub tab reconnects within it, so routine MCP restarts never steal browser focus. First run, closed Chrome, or a changed port still opens the launcher — that OS-level focus is unavoidable.
 
 **DOM extraction scope.** The content script constructs `PageController` with `viewportExpansion` read from `advancedConfig` in `chrome.storage.local`: `-1` = full page (default), `0` = viewport only, `N` = viewport + N px. Keep full-page as the default — a viewport-only value silently blinds the agent to off-screen content (an earlier build hardcoded `400` and was reverted for exactly that reason).
 
