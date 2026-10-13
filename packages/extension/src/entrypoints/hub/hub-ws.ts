@@ -74,6 +74,8 @@ export class HubWs {
 	#handlers: HubWsHandlers
 	#port: number
 	#onStateChange: (state: HubWsState) => void
+	#reconnectTimer: ReturnType<typeof setTimeout> | null = null
+	#stopped = false
 
 	constructor(port: number, handlers: HubWsHandlers, onStateChange: (state: HubWsState) => void) {
 		this.#port = port
@@ -91,6 +93,7 @@ export class HubWs {
 
 	connect() {
 		if (this.#ws) return
+		this.#stopped = false
 		this.#setState('connecting')
 
 		const ws = new WebSocket(`ws://localhost:${this.#port}`)
@@ -106,6 +109,9 @@ export class HubWs {
 			this.#busy = false
 			this.#approved = false
 			this.#setState('disconnected')
+			// Keep retrying so a hub tab left open survives MCP restarts
+			// (the caller skips re-opening the launcher when we come back).
+			if (!this.#stopped) this.#scheduleReconnect()
 		})
 
 		ws.addEventListener('message', (event) => {
@@ -114,11 +120,29 @@ export class HubWs {
 	}
 
 	disconnect() {
+		this.#stopped = true
+		if (this.#reconnectTimer) {
+			clearTimeout(this.#reconnectTimer)
+			this.#reconnectTimer = null
+		}
 		this.#ws?.close()
 		this.#ws = null
 		this.#busy = false
 		this.#approved = false
 		this.#setState('disconnected')
+	}
+
+	/**
+	 * Fixed 2s retry. The timer is scheduled from the `close` event, so the
+	 * chain stays depth-1 and keeps firing in background tabs (Chrome's
+	 * intensive throttling only clamps deep timer chains).
+	 */
+	#scheduleReconnect() {
+		if (this.#reconnectTimer) return
+		this.#reconnectTimer = setTimeout(() => {
+			this.#reconnectTimer = null
+			this.connect()
+		}, 2000)
 	}
 
 	#setState(state: HubWsState) {

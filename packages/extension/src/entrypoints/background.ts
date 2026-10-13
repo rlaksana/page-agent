@@ -17,8 +17,8 @@ export default defineBackground(() => {
 
 	chrome.runtime.onMessage.addListener((message, sender, sendResponse): true | undefined => {
 		if (message.type === 'OPEN_HUB') {
-			openOrFocusHubTab(message.wsPort).catch((err) =>
-				console.error('[background]: openOrFocusHubTab failed', err)
+			openHubTab(message.wsPort).catch((err) =>
+				console.error('[background]: openHubTab failed', err)
 			)
 			return
 		}
@@ -36,7 +36,7 @@ export default defineBackground(() => {
 
 	chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
 		if (message.type === 'OPEN_HUB') {
-			openOrFocusHubTab(message.wsPort).then(() => {
+			openHubTab(message.wsPort, sender.tab?.index).then(() => {
 				if (sender.tab?.id) chrome.tabs.remove(sender.tab.id)
 				sendResponse({ ok: true })
 			})
@@ -49,17 +49,18 @@ export default defineBackground(() => {
 	chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {})
 })
 
-async function openOrFocusHubTab(wsPort: number) {
+// The hub tab intentionally opens in the background: activating it (or the
+// launcher) would yank the user's window to the front on every MCP start.
+async function openHubTab(wsPort: number, index?: number) {
 	const hubUrl = chrome.runtime.getURL('hub.html')
 	const existing = await chrome.tabs.query({ url: `${hubUrl}*` })
 
 	if (existing.length > 0 && existing[0].id) {
-		await chrome.tabs.update(existing[0].id, {
-			active: true,
-			url: `${hubUrl}?ws=${wsPort}`,
-		})
+		await chrome.tabs.update(existing[0].id, { url: `${hubUrl}?ws=${wsPort}` })
 		return
 	}
 
-	await chrome.tabs.create({ url: `${hubUrl}?ws=${wsPort}`, pinned: true })
+	// Reuse the launcher's slot so closing the launcher right after does not
+	// activate the hub tab as its right-hand neighbor.
+	await chrome.tabs.create({ url: `${hubUrl}?ws=${wsPort}`, pinned: true, active: false, index })
 }
