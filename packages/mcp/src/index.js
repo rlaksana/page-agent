@@ -24,7 +24,7 @@ const hub = new HubBridge(port)
 const isOwner = await hub.start()
 
 // Open launcher in default browser (owner only — standbys proxy to the owner;
-// on takeover the bridge calls this again to bring the hub tab back)
+// on takeover this is called again via openLauncherWhenHubAbsent below)
 const openLauncher = () => {
 	const url = `http://localhost:${port}`
 	/** @type {[string, string[]]} */ // prettier-ignore
@@ -38,8 +38,17 @@ const openLauncher = () => {
 		if (err) console.error(`[page-agent-mcp] Could not open browser: ${err.message}`)
 	})
 }
-hub.onTakeover = openLauncher
-if (isOwner) openLauncher()
+hub.onTakeover = openLauncherWhenHubAbsent
+if (isOwner) openLauncherWhenHubAbsent()
+
+// A hub tab left open from a previous run reconnects on its own (2s WS retry),
+// so give it a moment before opening the launcher — that steals browser focus,
+// which a routine MCP restart shouldn't do.
+function openLauncherWhenHubAbsent() {
+	setTimeout(() => {
+		if (!hub.connected) openLauncher()
+	}, 5000)
+}
 
 // --- MCP server (stdio) ---
 

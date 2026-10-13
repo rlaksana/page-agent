@@ -128,8 +128,9 @@ export class HubBridge {
 			} catch (err) {
 				if (await this.#takeoverIfOwnerDead(err)) {
 					throw new Error(
-						'The previous hub owner process exited. This session took over the hub port ' +
-							'and re-opened the launcher page. Retry the task once the hub tab reconnects.'
+						'The previous hub owner process exited and this session took over the hub ' +
+							'port. Wait for the hub tab to reconnect (it is re-opened automatically ' +
+							'if none was left open), then retry the task.'
 					)
 				}
 				throw err
