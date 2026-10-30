@@ -71,12 +71,21 @@ export default function App() {
 		}
 	}, [history, activity])
 
-	// Auto-focus the input when entering chat and when a task finishes,
-	// so users can start typing immediately without a click.
+	// Auto-focus the input when entering chat and when a task finishes, so
+	// users can start typing immediately without a click. `configLoaded` is
+	// a dep because the mount-time run precedes the textarea (storage gate).
+	// The listener covers reopen: the MV3 sidepanel document survives close,
+	// so this effect alone never re-fires on the close→reopen cycle.
 	useEffect(() => {
+		const focusInput = () => textareaRef.current?.focus({ preventScroll: true })
 		if (view.name !== 'chat' || isRunning) return
-		textareaRef.current?.focus({ preventScroll: true })
-	}, [isRunning, view.name])
+		focusInput()
+		const onVisible = () => {
+			if (document.visibilityState === 'visible') focusInput()
+		}
+		document.addEventListener('visibilitychange', onVisible)
+		return () => document.removeEventListener('visibilitychange', onVisible)
+	}, [isRunning, view.name, configLoaded])
 
 	// Auto-grow the composer with its content up to a cap; it scrolls
 	// internally (thin scrollbar, reserved gutter) beyond that instead of
